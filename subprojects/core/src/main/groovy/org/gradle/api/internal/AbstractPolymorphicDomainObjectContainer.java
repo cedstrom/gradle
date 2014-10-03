@@ -15,25 +15,25 @@
  */
 package org.gradle.api.internal;
 
+import groovy.lang.Closure;
+import groovy.lang.MissingPropertyException;
 import org.gradle.api.*;
 import org.gradle.api.internal.plugins.DefaultConvention;
 import org.gradle.api.plugins.Convention;
+import org.gradle.internal.Transformers;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.util.ConfigureUtil;
 
-import groovy.lang.Closure;
-import groovy.lang.MissingPropertyException;
-
-import java.util.Map;
+import java.util.*;
 
 public abstract class AbstractPolymorphicDomainObjectContainer<T>
-        extends AbstractNamedDomainObjectContainer<T> implements PolymorphicDomainObjectContainer<T> {
+        extends AbstractNamedDomainObjectContainer<T> implements PolymorphicDomainObjectContainerInternal<T> {
 
     private final ContainerElementsDynamicObject elementsDynamicObject = new ContainerElementsDynamicObject();
     private final Convention convention;
     private final DynamicObject dynamicObject;
 
-    protected AbstractPolymorphicDomainObjectContainer(Class<T> type, Instantiator instantiator, Namer<? super T> namer) {
+    protected AbstractPolymorphicDomainObjectContainer(Class<? extends T> type, Instantiator instantiator, Namer<? super T> namer) {
         super(type, instantiator, namer);
         this.convention = new DefaultConvention(instantiator);
         this.dynamicObject = new ExtensibleDynamicObject(this, new ContainerDynamicObject(elementsDynamicObject), convention);
@@ -47,6 +47,14 @@ public abstract class AbstractPolymorphicDomainObjectContainer<T>
 
     public <U extends T> U create(String name, Class<U> type) {
         return create(name, type, null);
+    }
+
+    public <U extends T> U maybeCreate(String name, Class<U> type) throws InvalidUserDataException {
+        T item = findByName(name);
+        if (item != null) {
+            return Transformers.cast(type).transform(item);
+        }
+        return create(name, type);
     }
 
     public <U extends T> U create(String name, Class<U> type, Action<? super U> configuration) {
@@ -141,4 +149,9 @@ public abstract class AbstractPolymorphicDomainObjectContainer<T>
                     && hasProperty(name);
         }
     }
+
+    public <U extends T> NamedDomainObjectContainer<U> containerWithType(Class<U> type) {
+        return getInstantiator().newInstance(TypedDomainObjectContainerWrapper.class, type, this, getInstantiator());
+    }
+
 }

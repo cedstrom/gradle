@@ -16,30 +16,35 @@
 
 package org.gradle.execution.taskgraph
 
+import org.gradle.api.BuildCancelledException
 import org.gradle.api.CircularReferenceException
 import org.gradle.api.Task
 import org.gradle.api.internal.TaskInternal
 import org.gradle.api.internal.project.DefaultProject
+import org.gradle.api.internal.tasks.TaskStateInternal
 import org.gradle.api.specs.Spec
 import org.gradle.api.tasks.TaskDependency
-import org.gradle.api.tasks.TaskState
 import org.gradle.execution.TaskFailureHandler
+import org.gradle.initialization.BuildCancellationToken
 import org.gradle.util.TextUtil
+import spock.lang.Issue
 import spock.lang.Specification
 import spock.lang.Unroll
 
 import static org.gradle.util.TestUtil.createChildProject
 import static org.gradle.util.TestUtil.createRootProject
+import static org.gradle.util.TextUtil.toPlatformLineSeparators
 import static org.gradle.util.WrapUtil.toList
 
 public class DefaultTaskExecutionPlanTest extends Specification {
 
     DefaultTaskExecutionPlan executionPlan
     DefaultProject root;
+    def cancellationHandler = Mock(BuildCancellationToken)
 
     def setup() {
         root = createRootProject();
-        executionPlan = new DefaultTaskExecutionPlan()
+        executionPlan = new DefaultTaskExecutionPlan(cancellationHandler)
     }
 
     private void addToGraphAndPopulate(List tasks) {
@@ -329,6 +334,53 @@ public class DefaultTaskExecutionPlanTest extends Specification {
         executes(finalized, finalizer, dependsOnFinalized)
     }
 
+    def "multiple finalizer tasks may have relationships between each other"() {
+        Task f2 = task("f2")
+        Task f1 = task("f1", dependsOn: [f2])
+        Task finalized = task("finalized", finalizedBy: [f1, f2])
+
+        when:
+        addToGraphAndPopulate([finalized])
+
+        then:
+        executes(finalized, f2, f1)
+    }
+
+    def "multiple finalizer tasks may have relationships between each other via some other task"() {
+        Task f2 = task("f2")
+        Task d = task("d", dependsOn:[f2] )
+        Task f1 = task("f1", dependsOn: [d])
+        Task finalized = task("finalized", finalizedBy: [f1, f2])
+
+        when:
+        addToGraphAndPopulate([finalized])
+
+        then:
+        executes(finalized, f2, d, f1)
+    }
+
+    @Issue("GRADLE-2983")
+    def "multiple finalizer tasks with relationships via other tasks scheduled from multiple tasks"() {
+        //finalizers with a relationship via a dependency
+        Task f1 = task("f1")
+        Task dep = task("dep", dependsOn:[f1] )
+        Task f2 = task("f2", dependsOn: [dep])
+
+        //2 finalized tasks
+        Task finalized1 = task("finalized1", finalizedBy: [f1, f2])
+        Task finalized2 = task("finalized2", finalizedBy: [f1, f2])
+
+        //tasks that depends on finalized, we will execute them
+        Task df1 = task("df1", dependsOn: [finalized1])
+        Task df2 = task("df1", dependsOn: [finalized2])
+
+        when:
+        addToGraphAndPopulate([df1, df2])
+
+        then:
+        executes(finalized1, finalized2, f1, dep, f2, df1, df2)
+    }
+
     @Unroll
     def "finalizer tasks run as soon as possible for tasks that #orderingRule finalized tasks"() {
         Task finalizer = task("finalizer")
@@ -460,6 +512,29 @@ public class DefaultTaskExecutionPlanTest extends Specification {
         executedTasks == [a, b, c]
     }
 
+    @Issue("GRADLE-3127")
+    def "circular dependency detected with shouldRunAfter dependencies in the graph"() {
+        Task a = createTask("a")
+        Task b = task("b")
+        Task c = createTask("c")
+        Task d = task("d", dependsOn: [a, b, c])
+        relationships(a, shouldRunAfter: [b])
+        relationships(c, dependsOn: [d])
+
+        when:
+        addToGraphAndPopulate([d])
+
+        then:
+        CircularReferenceException e = thrown()
+        e.message == toPlatformLineSeparators("""Circular dependency between the following tasks:
+:c
+\\--- :d
+     \\--- :c (*)
+
+(*) - details omitted (listed previously)
+""")
+    }
+
     def "stops returning tasks on task execution failure"() {
         RuntimeException failure = new RuntimeException("failure");
         Task a = task("a");
@@ -480,6 +555,25 @@ public class DefaultTaskExecutionPlanTest extends Specification {
         then:
         RuntimeException e = thrown()
         e == failure
+    }
+
+    def "stops returning tasks when build is cancelled"() {
+        3 * cancellationHandler.cancellationRequested >>> [false, true, true]
+        Task a = task("a");
+        Task b = task("b");
+
+        when:
+        addToGraphAndPopulate([a, b])
+
+        then:
+        executedTasks == [a]
+
+        when:
+        executionPlan.awaitCompletion()
+
+        then:
+        BuildCancelledException e = thrown()
+        e.message == 'Build cancelled.'
     }
 
     protected TaskInfo getTaskToExecute() {
@@ -814,7 +908,7 @@ public class DefaultTaskExecutionPlanTest extends Specification {
 
     private TaskInternal createTask(final String name) {
         TaskInternal task = Mock()
-        TaskState state = Mock()
+        TaskStateInternal state = Mock()
         task.getProject() >> root
         task.name >> name
         task.path >> ':' + name

@@ -53,6 +53,9 @@ import org.gradle.util.ConfigureUtil
  *     //and some extra test source dirs
  *     testSourceDirs += file('some-extra-test-dir')
  *
+ *     //and hint to mark some of existing source dirs as generated sources
+ *     generatedSourceDirs += file('some-extra-source-folder')
+ *
  *     //and some extra dirs that should be excluded by IDEA
  *     excludeDirs += file('some-extra-exclude-dir')
  *
@@ -68,7 +71,7 @@ import org.gradle.util.ConfigureUtil
  *     jdkName = '1.6'
  *
  *     //if you need to put 'provided' dependencies on the classpath
- *     scopes.PROVIDED.plus += configurations.provided
+ *     scopes.PROVIDED.plus += [ configurations.provided ]
  *
  *     //if 'content root' (as IDEA calls it) of the module is different
  *     contentRoot = file('my-module-content-root')
@@ -159,6 +162,13 @@ class IdeaModule {
     Set<File> sourceDirs
 
     /**
+     * The directories containing the generated sources (both production and test sources).
+     * <p>
+     * For example see docs for {@link IdeaModule}
+     */
+    Set<File> generatedSourceDirs = []
+
+    /**
      * The keys of this map are the IDEA scopes. Each key points to another map that has two keys, plus and minus.
      * The values of those keys are collections of {@link org.gradle.api.artifacts.Configuration} objects. The files of the
      * plus configurations are added minus the files from the minus configurations. See example below...
@@ -179,7 +189,7 @@ class IdeaModule {
      *
      * idea {
      *   module {
-     *     scopes.PROVIDED.plus += configurations.provided
+     *     scopes.PROVIDED.plus += [ configurations.provided ]
      *   }
      * }
      * </pre>
@@ -316,7 +326,7 @@ class IdeaModule {
      */
     boolean offline
 
-    Map<String, Collection<File>> singleEntryLibraries
+    Map<String, Iterable<File>> singleEntryLibraries
 
     IdeaModule(org.gradle.api.Project project, IdeaModuleIml iml) {
         this.project = project
@@ -329,13 +339,14 @@ class IdeaModule {
         def path = { getPathFactory().path(it) }
         def contentRoot = path(getContentRoot())
         Set sourceFolders = getSourceDirs().findAll { it.exists() }.collect { path(it) }
+        Set generatedSourceFolders = getGeneratedSourceDirs().findAll { it.exists() }.collect { path(it) }
         Set testSourceFolders = getTestSourceDirs().findAll { it.exists() }.collect { path(it) }
         Set excludeFolders = getExcludeDirs().collect { path(it) }
         def outputDir = getOutputDir() ? path(getOutputDir()) : null
         def testOutputDir = getTestOutputDir() ? path(getTestOutputDir()) : null
         Set dependencies = resolveDependencies()
 
-        xmlModule.configure(contentRoot, sourceFolders, testSourceFolders, excludeFolders,
+        xmlModule.configure(contentRoot, sourceFolders, testSourceFolders, generatedSourceFolders, excludeFolders,
                 getInheritOutputDirs(), outputDir, testOutputDir, dependencies, getJdkName())
 
         iml.whenMerged.execute(xmlModule)

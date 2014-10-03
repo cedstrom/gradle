@@ -20,8 +20,8 @@ import org.gradle.api.internal.changedetection.state.InMemoryTaskArtifactCache
 import org.gradle.api.internal.tasks.TaskExecuter
 import org.gradle.api.internal.tasks.execution.ExecuteAtMostOnceTaskExecuter
 import org.gradle.api.invocation.Gradle
+import org.gradle.cache.CacheBuilder
 import org.gradle.cache.CacheRepository
-import org.gradle.cache.DirectoryCacheBuilder
 import org.gradle.cache.PersistentCache
 import org.gradle.internal.environment.GradleBuildEnvironment
 import org.gradle.internal.reflect.Instantiator
@@ -38,7 +38,7 @@ class TaskExecutionServicesTest extends Specification {
     def "makes a TaskExecutor available"() {
         given:
         CacheRepository cacheRepository = Mock()
-        DirectoryCacheBuilder cacheBuilder = Mock()
+        CacheBuilder cacheBuilder = Mock()
         _ * parent.get(Gradle) >> gradle
         _ * parent.get(ListenerManager) >> Mock(ListenerManager)
         _ * parent.get(StartParameter) >> Mock(StartParameter)
@@ -46,8 +46,7 @@ class TaskExecutionServicesTest extends Specification {
         _ * parent.get(CacheRepository) >> cacheRepository
         _ * parent.get(Instantiator) >> Mock(Instantiator)
         _ * parent.get(InMemoryTaskArtifactCache) >> Mock(InMemoryTaskArtifactCache)
-        _ * cacheRepository.cache(!null) >> cacheBuilder
-        _ * cacheBuilder.forObject(gradle) >> cacheBuilder
+        _ * cacheRepository.cache(gradle, 'taskArtifacts') >> cacheBuilder
         _ * cacheBuilder.withDisplayName(!null) >> cacheBuilder
         _ * cacheBuilder.withLockOptions(!null) >> cacheBuilder
         _ * cacheBuilder.open() >> Mock(PersistentCache)

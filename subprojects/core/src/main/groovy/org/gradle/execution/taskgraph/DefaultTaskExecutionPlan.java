@@ -16,6 +16,7 @@
 
 package org.gradle.execution.taskgraph;
 
+import org.gradle.api.BuildCancelledException;
 import org.gradle.api.CircularReferenceException;
 import org.gradle.api.Task;
 import org.gradle.api.Transformer;
@@ -25,6 +26,7 @@ import org.gradle.api.specs.Spec;
 import org.gradle.api.specs.Specs;
 import org.gradle.execution.MultipleBuildFailures;
 import org.gradle.execution.TaskFailureHandler;
+import org.gradle.initialization.BuildCancellationToken;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.graph.CachingDirectedGraphWalker;
 import org.gradle.internal.graph.DirectedGraph;
@@ -54,7 +56,12 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
     private Spec<? super Task> filter = Specs.satisfyAll();
 
     private TaskFailureHandler failureHandler = new RethrowingFailureHandler();
+    private final BuildCancellationToken cancellationToken;
     private final List<String> runningProjects = new ArrayList<String>();
+
+    public DefaultTaskExecutionPlan(BuildCancellationToken cancellationToken) {
+        this.cancellationToken = cancellationToken;
+    }
 
     public void addToTaskGraph(Collection<? extends Task> tasks) {
         List<TaskInfo> queue = new ArrayList<TaskInfo>();
@@ -65,7 +72,7 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
             TaskInfo node = graph.addNode(task);
             if (node.getMustNotRun()) {
                 requireWithDependencies(node);
-            } else {
+            } else if (filter.isSatisfiedBy(task)) {
                 node.require();
             }
             entryTasks.add(node);
@@ -121,7 +128,9 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
                 }
                 if (node.isRequired()) {
                     for (TaskInfo successor : node.getDependencySuccessors()) {
-                        successor.require();
+                        if (filter.isSatisfiedBy(successor.getTask())) {
+                            successor.require();
+                        }
                     }
                 } else {
                     tasksInUnknownState.add(node);
@@ -196,7 +205,7 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
     public void determineExecutionPlan() {
         List<TaskInfo> nodeQueue = new ArrayList<TaskInfo>(entryTasks);
         Set<TaskInfo> visitingNodes = new HashSet<TaskInfo>();
-        Stack<TaskDependencyGraphEdge> walkedShouldRunAfterEdges = new Stack<TaskDependencyGraphEdge>();
+        Stack<GraphEdge> walkedShouldRunAfterEdges = new Stack<GraphEdge>();
         Stack<TaskInfo> path = new Stack<TaskInfo>();
         HashMap<TaskInfo, Integer> planBeforeVisiting = new HashMap<TaskInfo, Integer>();
         while (!nodeQueue.isEmpty()) {
@@ -204,6 +213,7 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
 
             if (taskNode.isIncludeInGraph() || executionPlan.containsKey(taskNode.getTask())) {
                 nodeQueue.remove(0);
+                maybeRemoveProcessedShouldRunAfterEdge(walkedShouldRunAfterEdges, taskNode);
                 continue;
             }
 
@@ -219,8 +229,8 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
                     if (visitingNodes.contains(successor)) {
                         if (!walkedShouldRunAfterEdges.empty()) {
                             //remove the last walked should run after edge and restore state from before walking it
-                            TaskDependencyGraphEdge toBeRemoved = walkedShouldRunAfterEdges.pop();
-                            toBeRemoved.getFrom().removeShouldRunAfterSuccessor(toBeRemoved.getTo());
+                            GraphEdge toBeRemoved = walkedShouldRunAfterEdges.pop();
+                            toBeRemoved.from.removeShouldRunAfterSuccessor(toBeRemoved.to);
                             restorePath(path, toBeRemoved);
                             restoreQueue(nodeQueue, visitingNodes, toBeRemoved);
                             restoreExecutionPlan(planBeforeVisiting, toBeRemoved);
@@ -238,10 +248,11 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
                 visitingNodes.remove(taskNode);
                 path.pop();
                 executionPlan.put(taskNode.getTask(), taskNode);
+                // Add any finalizers to the queue
                 ArrayList<TaskInfo> finalizerTasks = new ArrayList<TaskInfo>();
                 addAllReversed(finalizerTasks, taskNode.getFinalizers());
                 for (TaskInfo finalizer : finalizerTasks) {
-                    if (!visitingNodes.contains(finalizer)) {
+                    if (!visitingNodes.contains(finalizer) && !nodeQueue.contains(finalizer)) {
                         nodeQueue.add(finalizerTaskPosition(finalizer, nodeQueue), finalizer);
                     }
                 }
@@ -249,9 +260,15 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
         }
     }
 
-    private void restoreExecutionPlan(HashMap<TaskInfo, Integer> planBeforeVisiting, TaskDependencyGraphEdge toBeRemoved) {
+    private void maybeRemoveProcessedShouldRunAfterEdge(Stack<GraphEdge> walkedShouldRunAfterEdges, TaskInfo taskNode) {
+        if(!walkedShouldRunAfterEdges.isEmpty() && walkedShouldRunAfterEdges.peek().to.equals(taskNode)){
+            walkedShouldRunAfterEdges.pop();
+        }
+    }
+
+    private void restoreExecutionPlan(HashMap<TaskInfo, Integer> planBeforeVisiting, GraphEdge toBeRemoved) {
         Iterator<Map.Entry<Task, TaskInfo>> executionPlanIterator = executionPlan.entrySet().iterator();
-        for (int i = 0; i < planBeforeVisiting.get(toBeRemoved.getFrom()); i++) {
+        for (int i = 0; i < planBeforeVisiting.get(toBeRemoved.from); i++) {
             executionPlanIterator.next();
         }
         while (executionPlanIterator.hasNext()) {
@@ -260,20 +277,20 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
         }
     }
 
-    private void restoreQueue(List<TaskInfo> nodeQueue, Set<TaskInfo> visitingNodes, TaskDependencyGraphEdge toBeRemoved) {
+    private void restoreQueue(List<TaskInfo> nodeQueue, Set<TaskInfo> visitingNodes, GraphEdge toBeRemoved) {
         TaskInfo nextInQueue = null;
-        while (!toBeRemoved.getFrom().equals(nextInQueue)) {
+        while (!toBeRemoved.from.equals(nextInQueue)) {
             nextInQueue = nodeQueue.get(0);
             visitingNodes.remove(nextInQueue);
-            if (!toBeRemoved.getFrom().equals(nextInQueue)) {
+            if (!toBeRemoved.from.equals(nextInQueue)) {
                 nodeQueue.remove(0);
             }
         }
     }
 
-    private void restorePath(Stack<TaskInfo> path, TaskDependencyGraphEdge toBeRemoved) {
+    private void restorePath(Stack<TaskInfo> path, GraphEdge toBeRemoved) {
         TaskInfo removedFromPath = null;
-        while (!toBeRemoved.getFrom().equals(removedFromPath)) {
+        while (!toBeRemoved.from.equals(removedFromPath)) {
             removedFromPath = path.pop();
         }
     }
@@ -298,9 +315,9 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
         }
     }
 
-    private void recordEdgeIfArrivedViaShouldRunAfter(Stack<TaskDependencyGraphEdge> walkedShouldRunAfterEdges, Stack<TaskInfo> path, TaskInfo taskNode) {
+    private void recordEdgeIfArrivedViaShouldRunAfter(Stack<GraphEdge> walkedShouldRunAfterEdges, Stack<TaskInfo> path, TaskInfo taskNode) {
         if (!path.empty() && path.peek().getShouldSuccessors().contains(taskNode)) {
-            walkedShouldRunAfterEdges.push(new TaskDependencyGraphEdge(path.peek(), taskNode));
+            walkedShouldRunAfterEdges.push(new GraphEdge(path.peek(), taskNode));
         }
     }
 
@@ -379,6 +396,9 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
         lock.lock();
         try {
             while (true) {
+                if (cancellationToken.isCancellationRequested()) {
+                    abortExecution();
+                }
                 TaskInfo nextMatching = null;
                 boolean allTasksComplete = true;
                 for (TaskInfo taskInfo : executionPlan.values()) {
@@ -492,6 +512,9 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
     }
 
     private void rethrowFailures() {
+        if (cancellationToken.isCancellationRequested()) {
+            failures.add(new BuildCancelledException());
+        }
         if (failures.isEmpty()) {
             return;
         }
@@ -510,6 +533,16 @@ class DefaultTaskExecutionPlan implements TaskExecutionPlan {
             }
         }
         return true;
+    }
+
+    private static class GraphEdge {
+        private final TaskInfo from;
+        private final TaskInfo to;
+
+        private GraphEdge(TaskInfo from, TaskInfo to) {
+            this.from = from;
+            this.to = to;
+        }
     }
 
     private static class RethrowingFailureHandler implements TaskFailureHandler {

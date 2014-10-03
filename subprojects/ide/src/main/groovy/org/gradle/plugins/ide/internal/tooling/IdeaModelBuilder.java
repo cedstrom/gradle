@@ -29,8 +29,13 @@ import java.io.File;
 import java.util.*;
 
 public class IdeaModelBuilder implements ToolingModelBuilder {
-    private final GradleProjectBuilder gradleProjectBuilder = new GradleProjectBuilder();
+    private final GradleProjectBuilder gradleProjectBuilder;
+
     private boolean offlineDependencyResolution;
+
+    public IdeaModelBuilder(GradleProjectBuilder gradleProjectBuilder) {
+        this.gradleProjectBuilder = gradleProjectBuilder;
+    }
 
     public boolean canBuild(String modelName) {
         return modelName.equals("org.gradle.tooling.model.idea.IdeaProject");
@@ -39,7 +44,7 @@ public class IdeaModelBuilder implements ToolingModelBuilder {
     public DefaultIdeaProject buildAll(String modelName, Project project) {
         Project root = project.getRootProject();
         applyIdeaPlugin(root);
-        DefaultGradleProject rootGradleProject = gradleProjectBuilder.buildAll(project);
+        DefaultGradleProject<?> rootGradleProject = gradleProjectBuilder.buildAll(project);
         return build(root, rootGradleProject);
     }
 
@@ -105,8 +110,8 @@ public class IdeaModelBuilder implements ToolingModelBuilder {
     private void appendModule(Map<String, DefaultIdeaModule> modules, IdeaModule ideaModule, DefaultIdeaProject ideaProject, DefaultGradleProject rootGradleProject) {
         DefaultIdeaContentRoot contentRoot = new DefaultIdeaContentRoot()
             .setRootDirectory(ideaModule.getContentRoot())
-            .setSourceDirectories(srcDirs(ideaModule.getSourceDirs()))
-            .setTestDirectories(srcDirs(ideaModule.getTestSourceDirs()))
+            .setSourceDirectories(srcDirs(ideaModule.getSourceDirs(), ideaModule.getGeneratedSourceDirs()))
+            .setTestDirectories(srcDirs(ideaModule.getTestSourceDirs(), ideaModule.getGeneratedSourceDirs()))
             .setExcludeDirectories(ideaModule.getExcludeDirs());
 
         DefaultIdeaModule defaultIdeaModule = new DefaultIdeaModule()
@@ -123,10 +128,14 @@ public class IdeaModelBuilder implements ToolingModelBuilder {
         modules.put(ideaModule.getName(), defaultIdeaModule);
     }
 
-    private Set<IdeaSourceDirectory> srcDirs(Set<File> sourceDirs) {
+    private Set<IdeaSourceDirectory> srcDirs(Set<File> sourceDirs, Set<File> generatedSourceDirs) {
         Set<IdeaSourceDirectory> out = new LinkedHashSet<IdeaSourceDirectory>();
         for (File s : sourceDirs) {
-            out.add(new DefaultIdeaSourceDirectory().setDirectory(s));
+            DefaultIdeaSourceDirectory sourceDirectory = new DefaultIdeaSourceDirectory().setDirectory(s);
+            if (generatedSourceDirs.contains(s)) {
+                sourceDirectory.setGenerated(true);
+            }
+            out.add(sourceDirectory);
         }
         return out;
     }
