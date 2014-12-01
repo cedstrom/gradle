@@ -25,9 +25,9 @@ import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.initialization.ClassLoaderScope;
 import org.gradle.api.internal.initialization.ScriptHandlerFactory;
 import org.gradle.api.internal.plugins.DefaultObjectConfigurationAction;
+import org.gradle.api.internal.plugins.PluginManager;
 import org.gradle.api.internal.project.AbstractPluginAware;
 import org.gradle.api.internal.project.ProjectRegistry;
-import org.gradle.api.plugins.PluginContainer;
 import org.gradle.configuration.ScriptPluginFactory;
 import org.gradle.groovy.scripts.ScriptSource;
 import org.gradle.internal.service.ServiceRegistry;
@@ -37,7 +37,6 @@ import java.io.File;
 
 public class BaseSettings extends AbstractPluginAware implements SettingsInternal {
     public static final String DEFAULT_BUILD_SRC_DIR = "buildSrc";
-
     private ScriptSource settingsScript;
 
     private StartParameter startParameter;
@@ -52,14 +51,13 @@ public class BaseSettings extends AbstractPluginAware implements SettingsInterna
 
     private ProjectDescriptorRegistry projectDescriptorRegistry;
 
-    private PluginContainer plugins;
-
     private FileResolver fileResolver;
 
     private final ScriptPluginFactory scriptPluginFactory;
     private final ScriptHandlerFactory scriptHandlerFactory;
     private final ClassLoaderScope classLoaderScope;
     private final ClassLoaderScope rootClassLoaderScope;
+    private final PluginManager pluginManager;
 
     public BaseSettings(ServiceRegistryFactory serviceRegistryFactory, GradleInternal gradle,
                         ClassLoaderScope classLoaderScope, ClassLoaderScope rootClassLoaderScope, File settingsDir,
@@ -71,12 +69,12 @@ public class BaseSettings extends AbstractPluginAware implements SettingsInterna
         this.startParameter = startParameter;
         this.classLoaderScope = classLoaderScope;
         ServiceRegistry services = serviceRegistryFactory.createFor(this);
-        this.plugins = services.get(PluginContainer.class);
         this.fileResolver = services.get(FileResolver.class);
         this.scriptPluginFactory = services.get(ScriptPluginFactory.class);
         this.scriptHandlerFactory = services.get(ScriptHandlerFactory.class);
         this.projectDescriptorRegistry = services.get(ProjectDescriptorRegistry.class);
         rootProjectDescriptor = createProjectDescriptor(null, settingsDir.getName(), settingsDir);
+        pluginManager = services.get(PluginManager.class);
     }
 
     @Override
@@ -207,10 +205,6 @@ public class BaseSettings extends AbstractPluginAware implements SettingsInterna
         return projectDescriptorRegistry;
     }
 
-    public PluginContainer getPlugins() {
-        return plugins;
-    }
-
     @Override
     protected DefaultObjectConfigurationAction createObjectConfigurationAction() {
         return new DefaultObjectConfigurationAction(fileResolver, scriptPluginFactory, scriptHandlerFactory, getRootClassLoaderScope(), this);
@@ -224,4 +218,7 @@ public class BaseSettings extends AbstractPluginAware implements SettingsInterna
         return classLoaderScope;
     }
 
+    public PluginManager getPluginManager() {
+        return pluginManager;
+    }
 }

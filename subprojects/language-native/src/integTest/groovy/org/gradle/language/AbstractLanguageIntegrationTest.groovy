@@ -37,8 +37,10 @@ abstract class AbstractLanguageIntegrationTest extends AbstractInstalledToolChai
     def "compile and link executable"() {
         given:
         buildFile << """
-            executables {
-                main {}
+            model {
+                components {
+                    main(NativeExecutableSpec)
+                }
             }
         """
 
@@ -57,10 +59,12 @@ abstract class AbstractLanguageIntegrationTest extends AbstractInstalledToolChai
     def "build executable with custom compiler arg"() {
         given:
         buildFile << """
-            executables {
-                main {
-                    binaries.all {
-                        ${helloWorldApp.compilerArgs("-DFRENCH")}
+            model {
+                components {
+                    main(NativeExecutableSpec) {
+                        binaries.all {
+                            ${helloWorldApp.compilerArgs("-DFRENCH")}
+                        }
                     }
                 }
             }
@@ -81,10 +85,12 @@ abstract class AbstractLanguageIntegrationTest extends AbstractInstalledToolChai
     def "build executable with macro defined"() {
         given:
         buildFile << """
-            executables {
-                main {
-                    binaries.all {
-                        ${helloWorldApp.compilerDefine("FRENCH")}
+            model {
+                components {
+                    main(NativeExecutableSpec) {
+                        binaries.all {
+                            ${helloWorldApp.compilerDefine("FRENCH")}
+                        }
                     }
                 }
             }
@@ -106,14 +112,15 @@ abstract class AbstractLanguageIntegrationTest extends AbstractInstalledToolChai
     def "build shared library and link into executable"() {
         given:
         buildFile << """
-            executables {
-                main {}
-            }
-            libraries {
-                hello {}
-            }
-            sources {
-                main.${helloWorldApp.sourceType}.lib libraries.hello
+            model {
+                components {
+                    main(NativeExecutableSpec) {
+                        sources {
+                            ${helloWorldApp.sourceType}.lib library: "hello"
+                        }
+                    }
+                    hello(NativeLibrarySpec)
+                }
             }
         """
 
@@ -138,18 +145,19 @@ abstract class AbstractLanguageIntegrationTest extends AbstractInstalledToolChai
     def "build static library and link into executable"() {
         given:
         buildFile << """
-            executables {
-                main {}
-            }
-            libraries {
-                hello {
-                    binaries.withType(StaticLibraryBinarySpec) {
-                        ${helloWorldApp.compilerDefine("FRENCH")}
+            model {
+                components {
+                    main(NativeExecutableSpec) {
+                        sources {
+                            ${helloWorldApp.sourceType}.lib library: "hello", linkage: "static"
+                        }
+                    }
+                    hello(NativeLibrarySpec) {
+                        binaries.withType(StaticLibraryBinarySpec) {
+                            ${helloWorldApp.compilerDefine("FRENCH")}
+                        }
                     }
                 }
-            }
-            sources {
-                main.${helloWorldApp.sourceType}.lib libraries.hello.static
             }
         """
 
@@ -184,8 +192,10 @@ abstract class AbstractLanguageIntegrationTest extends AbstractInstalledToolChai
         buildFile << helloWorldApp.pluginScript
         buildFile << helloWorldApp.extraConfiguration
         buildFile << """
-            executables {
-                main {}
+            model {
+                components {
+                    main(NativeExecutableSpec)
+                }
             }
         """
 

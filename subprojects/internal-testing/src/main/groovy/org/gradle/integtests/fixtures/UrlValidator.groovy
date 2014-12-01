@@ -16,6 +16,8 @@
 
 package org.gradle.integtests.fixtures
 
+import org.junit.Assert
+
 class UrlValidator {
 
     static void available(String theUrl, String application = null, int timeout = 30000) {
@@ -30,6 +32,14 @@ class UrlValidator {
             }
             Thread.sleep(200)
         }
-        throw new RuntimeException(String.format("Timeout waiting for %s to become available.", application!=null ? application : theUrl));
+        throw new RuntimeException(String.format("Timeout waiting for %s to become available.", application != null ? application : theUrl));
+    }
+
+    static void notAvailable(String theUrl) {
+        try {
+            String content = new URL(theUrl).text
+            Assert.fail(String.format("Expected url '%s' to be unavailable instead we got:\n%s", theUrl, content));
+        } catch (SocketException ex) {
+        }
     }
 }

@@ -2,152 +2,97 @@
 
 Here are the new features introduced in this Gradle release.
 
-### Component Selection Rules (i)
-Fine tuning the dependency resolution process is even more powerful now with the use of component selection rules.  These allow custom rules to be applied whenever
-multiple versions of a component are being evaluated.  Using such rules, one can explicitly reject a version that might otherwise be accepted by the default version matching
-strategy.  This allows Gradle to customize component selection without knowing what versions might be available at build time.
+### Component metadata rule enhancements
 
-    configurations {
-        conf {
-            resolutionStrategy {
-                componentSelection {
-                    // Accept the newest version that matches the dynamic selector
-                    // but does not end with "-experimental".
-                    all { ComponentSelection selection ->
-                        if (selection.candidate.group == 'org.sample'
-                                && selection.candidate.name == 'api'
-                                && selection.candidate.version.endsWith('-experimental')) {
-                            selection.reject("rejecting experimental")
-                        }
-                    }
-
-                    // Rules can consider component metadata as well
-                    // Accept the highest version with a branch of 'testing' or a status of 'milestone'
-                    all { ComponentSelection selection, IvyModuleDescriptor descriptor, ComponentMetadata metadata ->
-                        if (selection.candidate.group == 'org.sample'
-                                && selection.candidate.name == 'api'
-                                && (descriptor.branch != 'testing' && metadata.status != 'milestone')) {
-                            selection.reject("does not match branch or status")
-                        }
-                    }
-
-                    // Rules can target specific modules
-                    // Reject the 1.1 version of org.sample:api
-                    withModule("org.sample:api") { ComponentSelection selection ->
-                        if (selection.candidate.version == "1.1") {
-                            selection.reject("known bad version")
-                        }
-                    }
-                }
-            }
-        }
-    }
-    dependencies {
-        conf "org.sample:api:1.+"
-    }
-
-See the [userguide section](userguide/dependency_management.html#component_selection_rules) on component selection rules for further information.
-
-### Declaring module replacements (i)
-
-It is now possible to declare that certain module is replaced by some other. For example "com.google.collections:google-collections" is replaced by "com.google.guava:guava".
-Such declaration enables Gradle's conflict resolution to be smarter and avoid having both conflicting modules (e.g. "google-collections" + "guava") in the same classpath / dependency tree.
-This feature makes Gradle much better tool in handling scenarios when "group":"name" coordinates of a library change. There are many examples of such migrations, e.g.
-org.jboss.netty->io.netty, spring->spring-core, etc. Module replacement declarations can ship with corporate Gradle plugins and enable stronger and smarter
-dependency resolution in all Gradle-powered projects in the enterprise. This new incubating feature is described in detail in the [User Guide](userguide/dependency_management.html#sec:module_replacement).
+The interface for defining component metadata rules has been enhanced so that it now supports defining rules on a per module basis
+as well as for all modules.  Furthermore, rules can now also be specified as `rule source` objects.
 
     dependencies {
         components {
-            module("com.google.collections:google-collections").replacedBy("com.google.guava:guava")
+            // This rule applies to all modules
+            all { ComponentMetadataDetails details ->
+                if (details.group == "my.org" && details.status == "integration") {
+                    details.changing = true
+                }
+            }
+
+            // This rule applies to only the "my.org:api" module
+            withModule("my.org:api") { ComponentMetadetails details ->
+                details.statusScheme = [ "testing", "candidate", "release" ]
+            }
+
+            // This rule uses a rule source object to define another rule for "my.org:api"
+            withModule("my.org:api", new CustomStatusRule()) // See class definition below
         }
     }
 
-### Sonar Runner plugin improvements
+    class CustomStatusRule {
+        @Mutate
+        void setComponentStatus(ComponentMetadataDetails details) {
+            if (details.status == "integration") {
+                details.status = "testing"
+            }
+        }
+    }
 
-The [Sonar Runner Plugin](userguide/sonar_runner_plugin.html) has been improved to fork the Sonar Runner process.
-In previous Gradle versions the runner was executed within the build process.
-This was problematic is it made controlling the environment (e.g. JVM memory settings) for the runner difficult and mean the runner could destabilize the build process.
-Importantly, because the Sonar Runner process is now forked, the version of Sonar Runner to use can now be configured in the build.
+See the [userguide section](userguide/dependency_management.html#component_metadata_rules) on component metadata rules for further information.
 
-The `sonar-runner` plugin defaults to using version 2.3 of the runner.
-Upgrading to a later version is now simple:
+### New PluginAware methods for detecting the presence of plugins
 
-    apply plugin: "sonar-runner"
+The `PluginAware` interface (implemented by `Project`, `Gradle` and `Settings`) has the following new methods for detecting the presence of plugins, based on ID:
+
+* findPlugin()
+* hasPlugin()
+* withPlugin()
+
+These methods should be used when reacting to the presence of another plugin or for ad-hoc reporting.
+
+TODO - more detail.
+
+### ANTLR plugin supports ANTLR version 3.X and 4.X
+
+Additionally to the existing 2.X support, the [ANTLR Plugin](userguide/antlrPlugin.html) now supports ANTLR version 3 and 4. 
+To use ANTLR version 3 or 4 in a build, an according antlr dependency must be declared explicitly:
+
+    apply plugin: "java"
+    apply plugin: "antlr"
     
-    sonarRunner {
-      toolVersion = "2.4"
-      
-      // Fine grained control over the runner process
-      forkOptions {
-        maxHeapSize = '1024m'
-      }
+    repositories() {
+        jcenter()
     }
-
-This feature was contributed by [Andrea Panattoni](https://github.com/zeeke).
-
-### Native language cross-compilation improvements (i)
-
-- Uses the file naming scheme of the target platform, rather than then host platform.
-- Uses compiler and linker arguments based on the target platform, rather than the host platform.
-- Added `eachPlatform()` method to each `ToolChain` type, to allow fine-grained customization of a particular tool chain on a per-platform basis.
-- Added `TargetedPlatformToolChain.getPlatform()` to allow tool chain customization logic access to the target platform.
-
-### Support for building x64 binaries on Windows using GCC (i)
-
-Previous versions of Gradle have supported building x86 binaries using GCC on Windows. This Gradle release adds initial support for building
-x64 binaries using GCC on Windows.
-
-### Specify VCS integration with IDEA support
-
-When using the `idea` plugin, it is now possible to specify the version control system to configure IDEA to use when importing the project.
-
-    apply plugin: "idea"
-
-    idea {
-      project {
-        vcs = "Git"
-      }
+    
+    dependencies {
+        antlr 'org.antlr:antlr4:4.3'
     }
-
-Note: This setting is only respected when the project is opened in IDEA using the `.ipr` (and associated) files generated by the `./gradlew idea` task.
-It is not respected when the project is imported into IDEA using IDEA's import feature.
-
-This feature was contributed by [Kallin Nagelberg](https://github.com/Kallin).
-
-### Specify location of local maven repository independently
-
-The location of the local Maven repository can now be controlled by setting the system property `maven.repo.local` to the absolute path to the repo.
-This has been added for parity with Maven itself.
-This can be used to isolate the maven local repository for a particular build, without changing the location of the `~/.m2/settings.xml` which may 
-contain information to be shared by all builds.
-
-This feature was contributed by [Christoph Gritschenberger](https://github.com/ChristophGr).
-
-### Compatibility with OpenShift
-
-The [OpenShift PaaS](https://www.openshift.com) environment uses a proprietary mechanism for discovering the binding address of the network interface.
-Gradle requires this information for inter process communication.
-Support has been added for this environment which now makes it possible to use Gradle with OpenShift.
   
-This feature was contributed by [Colin Findlay](https://github.com/silver2k).
+This feature was contributed by [Rob Upcraft](https://github.com/upcrob).
 
-### Support for renaming imported Ant targets
+### AntlrTask running in separate process
 
-When [importing an Ant build](userguide/ant.html#N11485) it is now possible to specify an alternative name for tasks that corresponds to the targets of the imported Ant build.
-This can be used to resolve naming collisions between Ant targets and existing Gradle tasks (GRADLE-771).
+The [`AntlrTask`](dsl/org.gradle.api.plugins.AntlrTask.html) is now 
+executed in a separate process. This allows more fine grained control over memory settings just for the ANTLR process.
+See [Antlr Plugin](userguide/antlrPlugin.html) for further details. 
 
-To do so, supply a transformer to the [`ant.importBuild()`] method that supplies the alternative name.
+This feature was also contributed by [Rob Upcraft](https://github.com/upcrob).
 
-    apply plugin: "java" // adds 'clean' task
-    
-    ant.importBuild("build.xml") {
-        it == "clean" ? "ant-clean" : it
-    }
+### Build Comparison plugin now compares nested archives
 
-The above example avoids a name collision with the clean task.
-See the [section on importing Ant builds in the Gradle Userguide](userguide/ant.html#N11485) for more information.
+The [Build Comparison plugin](userguide/comparing_builds.html) has been improved in this release to compare entries of nested archives.
+Previously, when comparing an archive all archive entries were treated as binary blobs.
+Now, entries of archive entries are inspected recursively where possible.
+That is, archive entries that are themselves archives are compared entry by entry.
+A common type of nested archive is a WAR file containing JAR files.
 
-This feature was contributed by [Paul Watson](https://github.com/w4tson).
+This feature was contributed by [Björn Kautler](https://github.com/Vampire).
+
+### Daemon health - TODO
+
+### Tooling API improvements
+
+The Gradle tooling API provides a stable API that tools such as IDEs can use to embed Gradle. In Gradle 2.3, the tooling API now supports generating
+colored build output, identical to that generated by Gradle on the command-line. This feature was contributed by Lari Hotari.
+
+Tooling API JAR is now OSGi compatible. Its manifest is generated using [Bnd](http://www.aqute.biz/Bnd/Bnd) tool.
 
 ## Promoted features
 
@@ -169,134 +114,91 @@ in the next major Gradle version (Gradle 3.0). See the User guide section on the
 
 The following are the newly deprecated items in this Gradle release. If you have concerns about a deprecation, please raise it via the [Gradle Forums](http://forums.gradle.org).
 
-<!--
-### Example deprecation
--->
+### Multiple `PluginContainer` methods are deprecated.
+
+[`PluginContainer.apply(String)`](javadoc/org/gradle/api/plugins/PluginContainer.html#apply\(java.lang.String\)) and
+[`PluginContainer.apply(Class)`](javadoc/org/gradle/api/plugins/PluginContainer.html#apply\(java.lang.Class\)) methods are deprecated, 
+please use [`PluginAware.apply(Map)`](javadoc/org/gradle/api/plugins/PluginAware.html#apply\(java.util.Map\)) or 
+[`PluginAware.apply(Closure)`](javadoc/org/gradle/api/plugins/PluginAware.html#apply\(groovy.lang.Closure\)) instead.
+
+    // Instead of…
+    project.plugins.apply("java")
+    
+    // Please use…
+    project.apply(plugin: "java")
+
+All other mutative methods of `PluginContainer` are deprecated without replacements:
+
+* `add(Plugin)`
+* `addAll(Collection<? extends Plugin>)`
+* `clear()`
+* `remove(Object)`
+* `removeAll(Collection<?>)`
+* `retainAll(Collection<?>)`
+
+These methods have no useful purpose.   
+
+The deprecated method will be removed in Gradle 3.0.
+
+### Renamed method on ComponentMetadataHandler
+
+The `eachComponent` method on the incubating `ComponentMetadataHandler` interface has been deprecated and replaced with `all`.
+As this is an incubating feature, the deprecated method will be removed in Gradle 2.3.
+
+### `--no-color` command-line option
+
+The `--no-color` option has been replaced by the more general `--console` option. You can use `gradle --console plain ...` instead of `gradle --no-color ...`.
+
+The `--no-color` option will be removed in Gradle 3.0.
 
 ## Potential breaking changes
 
-### filesMatching used in CopySpec now matches against source path rather than destination path
+### Major to incubating 'native-component' and 'jvm-component' plugins
 
-In the example below, both `filesMatching` blocks will now match against the source path of the files under `from`. In
-previous versions of Gradle, the second `filesMatching` block would match against the destination path that was set by
-executing the first block.
+As we develop a new configuration and component model for Gradle, we are also developing an underlying infrastructure to allow
+the easy implementation of plugins supporting new platforms (native/jvm/javascript) and languages (C/C++/Java/Scala/CoffeeScript).
 
-    task copy(type: Copy) {
-        from 'from'
-        into 'dest'
-        filesMatching ('**/*.txt') {
-            path = path + '.template'
-        }
-        filesMatching ('**/*.template') { // will not match the files from the first block anymore
-            path = path.replace('template', 'concrete')
-        }
-    }
+This version of Gradle takes a big step in that direction, by migrating the existing component-based plugins to sit on top of this
+new infrastructure. This includes the incubating 'jvm-component' and 'java-lang' plugins, as well as all of the plugins providing
+support for building native applications.
 
-### Native language support
+Due to this, the DSL for defining native executables and libraries has fundamentally changed. The `executables` and `libraries` containers
+have been removed, and components are now added by type to the `components` container owned by the model registry. Another major change is
+that source sets for a component are now declared directly within the component definition, instead of being configured on the `sources` block.
 
-- Replaced `TargetedPlatformToolChain` with `GccPlatformToolChain` and `VisualCppPlatformToolChain`.
-- Renamed `PlatformConfigurableToolChain` to `GccCompatibleToolChain`.
-- Removed tool properties from tool chains. `target()` or `eachPlatform()` should be used instead.
-- Removed deprecated `ExecutableBinary`: use `NativeExecutableBinary` instead.
-- Renamed `org.gradle.language.jvm.ResourceSet` to `JvmResourceSet`
-- Moved `org.gradle.api.jvm.ClassDirectoryBinarySpec` to `org.gradle.jvm.ClassDirectoryBinarySpec`
-- Renamed package `org.gradle.nativeplatform.sourceset` to `org.gradle.language.nativeplatform`
-- Renamed package `org.gradle.language.nativebase` to `org.gradle.language.nativeplatform`
-- Added binary type parameter to `ComponentSpec`
-- Renamed `ToolChainRegistry` to `NativeToolChainRegistry` and `PlatformToolChain` to `NativePlatformToolChain`
+Please take a look at the sample applications found in `samples/native-binaries` to get a better idea of how you may migrate your Gradle build
+file to the new syntax.
 
-### JVM language support
+Note that this functionality is a work-in-progress, and in some cases it may be preferable to remain on an earlier version of Gradle until
+it has stabilised.
 
-- Moved `org.gradle.language.jvm.artifact.JavadocArtifact` to `org.gradle.language.java.artifact.JavadocArtifact`.
+### Ivy dependency exclude rules
 
-### Manually added AntTarget tasks no longer respect target dependencies
+Previous versions of Gradle improperly handled the `name` attribute for [dependency exclude rules](http://ant.apache.org/ivy/history/latest-milestone/ivyfile/artifact-exclude.html).
+Instead of excluding the matching artifact(s), the whole module was excluded. This behavior has been fixed with this version of Gradle. Keep in mind that this change
+may cause a slightly different dependency resolution behavior if you heavily rely on Ivy excludes.
 
-The `org.gradle.api.tasks.ant.AntTarget` task implementation adapts a target from an Ant build to a Gradle task 
-and is used when Gradle [imports an Ant build](userguide/ant.html#N11485).
-
-In previous Gradle versions, it was somewhat possible to manually add tasks of this type and wire them to Ant targets manually.
-However, this was not recommended and can produce surprising and incorrect behaviour.
-Instead, the `ant.importBuild()` method should be used to import Ant build and to run Ant targets.
-
-As of Gradle 2.2, manually added `AntTarget` tasks no longer honor target dependencies.
-Tasks created as a result of `ant.importBuild()` (i.e. the recommended practice) are unaffected and will continue to work.
-
-### Sonar Runner Plugin changes
-
-The sonar runner plugin now forks a new jvm to analyze the project. 
-Projects using the [Sonar Runner Plugin](userguide/sonar_runner_plugin.html) should consider setting explicitly the memory settings for the runner process. 
-
-Existing users of the `sonar-runner` plugin may have increased the memory allocation to the Gradle process to facilitate the Sonar Runner.
-This can now be reduced.
-    
-The Sonar Runner version is now configurable.
-Previously the plugin enforced the use of version 2.0.
-The default version is now 2.3.
-If you require the previous default of 2.0, you can specify this version via the project extension.
-    
-    sonarRunner {
-      toolVersion = '2.0'
-    }
-
-### Publishing plugins and Native Language Support plugins changes
-
-In previous Gradle versions it was possible to use `afterEvaluate {}` blocks to configure tasks added to the project 
-by `"maven-publish"`, `"ivy-publish"` and Native Language Support plugins.
-These tasks are now created after execution of `afterEvaluate {}` blocks. 
-This change was necessary to continue improving the new model configuration. 
-Please use `model {}` blocks instead for that purpose, e.g.:
-
-    model { 
-        tasks.generatePomFileForMavenJavaPublication { 
-            dependsOn 'someOtherTask' 
-        } 
-    }
-
-### CodeNarc plugin Groovy version changes
-
-The version of Groovy that the [CodeNarc plugin](userguide/codenarc_plugin.html) uses while analyzing Groovy source code has changed in this Gradle release.
-Previously, the version of Groovy that Gradle ships with was used.
-Now, the version of Groovy that the CodeNarc tool declares as a dependency is used. 
-
-This should have no impact on users of the CodeNarc plugin.
-Upon first use of the CodeNarc plugin with Gradle 2.1, you may see Gradle downloading a Groovy implementation for use with the CodeNarc plugin.
-
-### Change of package names for sonar-runner plugin
-
-The classes of the (incubating) [Sonar Runner Plugin](userguide/sonar_runner_plugin.html) have moved from the package `org.gradle.api.sonar.runner` to `org.gradle.sonar.runner`.
-
-If you were depending on these classes explicitly, you will need to update the reference.
+In this context, we also fixed the incorrect handling of the `artifact` attribute for [module exclude rules](http://ant.apache.org/ivy/history/latest-milestone/ivyfile/exclude.html). For
+more information see [GRADLE-3147](https://issues.gradle.org/browse/GRADLE-3147).
 
 ## External contributions
 
 We would like to thank the following community members for making contributions to this release of Gradle.
 
-* [Jake Wharton](https://github.com/JakeWharton) - clarification of hashing used for Gradle Wrapper downloads
-* [Baron Roberts](https://github.com/baron1405) - fixes to JDepend plugin
-* [Dinio Dinev](https://github.com/diniodinev) - various spelling corrections
-* [Alex Selesse](https://github.com/selesse) - documentation improvements
-* [Raymond Chiu](https://github.com/rschiu) - improve handling of install name in GCC tool chain
-* [Kallin Nagelberg](https://github.com/Kallin) - support for specifying VCS with IDEA plugin
-* [Christoph Gritschenberger](https://github.com/ChristophGr) - support for `maven.repo.local` system property
-* [Colin Findlay](https://github.com/silver2k) - OpenShift compatibility [GRADLE-2871]
-* [Paul Watson](https://github.com/w4tson) - Support for renaming Ant targets on import [GRADLE-771]
-* [Andrea Panattoni](https://github.com/zeeke) - Provide option to fork Sonar analysis [GRADLE-2587]
-* [Lóránt Pintér](https://github.com/lptr) 
-    - `Action` overloads project `project.exec()` and `project.javaexec()`
-    - DefaultResolutionStrategy.copy() should copy componentSelectionRules, too
-* [Clark Brewer](https://github.com/brewerc) - spelling corrections
-* [Guilherme Espada](https://github.com/GUIpsp) - allow to use OpenJDK with Gradle
-* [Harald Schmitt](https://github.com/surfing) 
-    - handle German-localised `readelf` when parsing output in integration tests
-    - fix performance tests for Locale settings using not `.` as decimal separator
-* [Derek Eskens](https://github.com/snekse) - documentation improvements.
-* [Justin Ryan](https://github.com/quidryan) - documentation fixes.
-* [Alexander Shutyaev](https://github.com/shutyaev) - log4j-over-slf4j version upgrade. [GRADLE-3167]
-* [Schalk Cronjé](https://github.com/ysb33r) - DSL documentation improvements
-* [Ryan Liptak](https://github.com/squeek502) - Eclipse integration test coverage improvements
-* [Stuart Armitage](https://github.com/maiflai) - Fixed bug in AbstractTask.setActions
-* [Björn Kautler](https://github.com/Vampire) - improvements to `'sonar-runner'` plugin
-* [Andrii Liubimov](https://github.com/aliubimov) - enhancement to `IdeaModule` model to mark generated source directories
+* [Lari Hotari](https://github.com/lhotari) - improvements to output handling in Tooling API (GRADLE-2687) and coloring for the output
+* [Sébastien Cogneau](https://github.com/scogneau) - share distribution plugin logic with application plugin
+* [Greg Chrystall](https://github.com/ported) - idea plugin generates wrong sources jar for multi artifacts dependencies (GRADLE-3170)
+* [Rob Upcraft](https://github.com/upcrob) - add support for ANTLR v3 and v4 to antlr plugin (GRADLE-902)
+* [Andreas Schmid](https://github.com/aaschmid) - changes to Eclipse classpath generating when using WTP (GRADLE-1422, GRADLE-2186, GRADLE-2362, GRADLE-2221)
+* [Björn Kautler](https://github.com/Vampire) - improvements to Build Comparison plugin
+* [Michal Srb](https://github.com/msrb) - update bouncycastle dependency to the latest version
+* [Stefan Wolf](https://github.com/wolfs) - support maven publications that have multiple artifacts without classifier
+* [Daniel Lacasse](https://github.com/Shad0w1nk) - improvements to static task references available for each native binary type
+* [Spencer Wood](https://github.com/malibuworkcrew) - support `configfailurepolicy` option for TestNG
+* [Adam Dubiel](https://github.com/adamdubiel) - wrapper respects -q/--quiet option
+* [Harald Schmitt](https://github.com/surfing) - format numbers in tests in a locale independent way
+* [Wojciech Gawroński](https://github.com/afronski) - add a toggle for wrapping long lines of 'code' blocks in test reports
+* [Ben McCann](https://github.com/benmccann) - use https when downloading Play binaries in integration tests
 
 We love getting contributions from the Gradle community. For information on contributing, please see [gradle.org/contribute](http://gradle.org/contribute).
 

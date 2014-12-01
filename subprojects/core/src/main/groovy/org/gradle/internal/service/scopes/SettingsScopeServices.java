@@ -20,9 +20,10 @@ import org.gradle.api.internal.DependencyInjectingInstantiator;
 import org.gradle.api.internal.SettingsInternal;
 import org.gradle.api.internal.file.BaseDirFileResolver;
 import org.gradle.api.internal.file.FileResolver;
-import org.gradle.api.internal.plugins.DefaultPluginContainer;
+import org.gradle.api.internal.plugins.ImperativeOnlyPluginApplicator;
+import org.gradle.api.internal.plugins.PluginApplicator;
+import org.gradle.api.internal.plugins.PluginManager;
 import org.gradle.api.internal.plugins.PluginRegistry;
-import org.gradle.api.plugins.PluginContainer;
 import org.gradle.initialization.DefaultProjectDescriptorRegistry;
 import org.gradle.initialization.ProjectDescriptorRegistry;
 import org.gradle.internal.nativeintegration.filesystem.FileSystem;
@@ -42,11 +43,12 @@ public class SettingsScopeServices extends DefaultServiceRegistry {
     }
 
     protected PluginRegistry createPluginRegistry(PluginRegistry parentRegistry) {
-        return parentRegistry.createChild(settings.getClassLoaderScope(), new DependencyInjectingInstantiator(this));
+        return parentRegistry.createChild(settings.getClassLoaderScope());
     }
 
-    protected PluginContainer createPluginContainer() {
-        return new DefaultPluginContainer(get(PluginRegistry.class), settings);
+    protected PluginManager createPluginManager() {
+        PluginApplicator applicator = new ImperativeOnlyPluginApplicator<SettingsInternal>(settings);
+        return new PluginManager(get(PluginRegistry.class), new DependencyInjectingInstantiator(this), applicator);
     }
 
     protected ProjectDescriptorRegistry createProjectDescriptorRegistry() {

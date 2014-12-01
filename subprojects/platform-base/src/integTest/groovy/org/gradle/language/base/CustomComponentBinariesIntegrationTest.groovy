@@ -15,7 +15,6 @@
  */
 
 package org.gradle.language.base
-
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import spock.lang.Unroll
 
@@ -27,38 +26,64 @@ class CustomComponentBinariesIntegrationTest extends AbstractIntegrationSpec{
         buildFile << """
 import org.gradle.model.*
 import org.gradle.model.collection.*
+import org.gradle.api.internal.file.FileResolver
+import javax.inject.Inject
+import org.gradle.internal.service.ServiceRegistry
 
 interface SampleBinary extends BinarySpec {}
 interface OtherSampleBinary extends SampleBinary {}
-class DefaultSampleBinary extends BaseBinarySpec implements SampleBinary {}
-class OtherSampleBinaryImpl extends BaseBinarySpec implements OtherSampleBinary {}
-interface SampleLibrary extends ComponentSpec<SampleBinary> {}
+
+interface LibrarySourceSet extends LanguageSourceSet{ }
+
+class DefaultLibrarySourceSet extends org.gradle.language.base.internal.AbstractLanguageSourceSet implements LibrarySourceSet {
+
+    public DefaultLibrarySourceSet(String name, FileResolver fileResolver) {
+        super(name, "librarySource", "Library source", new org.gradle.api.internal.file.DefaultSourceDirectorySet("libSource", fileResolver));
+    }
+}
+
+class DefaultSampleBinary extends BaseBinarySpec implements SampleBinary {
+}
+
+class OtherSampleBinaryImpl extends BaseBinarySpec implements OtherSampleBinary {
+}
+
+
+interface SampleLibrary extends ComponentSpec {}
 class DefaultSampleLibrary extends BaseComponentSpec implements SampleLibrary {}
 
-            class MyBinaryDeclarationModel implements Plugin<Project> {
-            void apply(final Project project) {}
+    class MyBinaryDeclarationModel implements Plugin<Project> {
+        void apply(final Project project) {}
 
-            @RuleSource
-            static class ComponentModel {
-                @ComponentType
-                void register(ComponentTypeBuilder<SampleLibrary> builder) {
-                    builder.defaultImplementation(DefaultSampleLibrary)
-                }
-                @Mutate
-                void createSampleComponentComponents(CollectionBuilder<SampleLibrary> componentSpecs) {
-                    componentSpecs.create("sampleLib")
-                }
-
-                @BinaryType
-                void register(BinaryTypeBuilder<SampleBinary> builder) {
-                    builder.defaultImplementation(DefaultSampleBinary)
-                }
-
-                @BinaryType
-                void registerOther(BinaryTypeBuilder<OtherSampleBinary> builder) {
-                    builder.defaultImplementation(OtherSampleBinaryImpl)
-                }
+        @RuleSource
+        static class ComponentModel {
+            @ComponentType
+            void register(ComponentTypeBuilder<SampleLibrary> builder) {
+                builder.defaultImplementation(DefaultSampleLibrary)
             }
+
+            @Mutate
+            void createSampleComponentComponents(CollectionBuilder<SampleLibrary> componentSpecs, ServiceRegistry serviceRegistry) {
+                componentSpecs.create("sampleLib", new Action<SampleLibrary>(){
+                    public void execute(SampleLibrary library) {
+                        library.sources{
+                            it.add(new DefaultLibrarySourceSet("librarySource", serviceRegistry.get(FileResolver.class)))
+                        }
+                    }
+                });
+            }
+
+            @BinaryType
+            void register(BinaryTypeBuilder<SampleBinary> builder) {
+                builder.defaultImplementation(DefaultSampleBinary)
+            }
+
+            @BinaryType
+            void registerOther(BinaryTypeBuilder<OtherSampleBinary> builder) {
+                builder.defaultImplementation(OtherSampleBinaryImpl)
+            }
+        }
+
         }
 
         apply plugin:MyBinaryDeclarationModel
@@ -76,9 +101,12 @@ class DefaultSampleLibrary extends BaseComponentSpec implements SampleLibrary {}
             def sampleBinary = project.binaries.sampleLibBinary
             def othersSampleBinary = project.binaries.sampleLibOtherBinary
             assert sampleBinary instanceof SampleBinary
-            assert sampleBinary.displayName == "DefaultSampleBinary: 'sampleLibBinary'"
+            assert sampleBinary.displayName == "DefaultSampleBinary 'sampleLibBinary'"
+            println sampleBinary.source[0].displayName
+            assert sampleBinary.source[0].displayName == "Library source 'librarySource:librarySource'"
             assert othersSampleBinary instanceof OtherSampleBinary
-            assert othersSampleBinary.displayName == "OtherSampleBinaryImpl: 'sampleLibOtherBinary'"
+            assert othersSampleBinary.displayName == "OtherSampleBinaryImpl 'sampleLibOtherBinary'"
+            assert othersSampleBinary.source[0].displayName == "Library source 'librarySource:librarySource'"
         }
 """
         then:
@@ -96,12 +124,13 @@ class DefaultSampleLibrary extends BaseComponentSpec implements SampleLibrary {}
 --------------------------------
 
 Source sets
-    No source sets.
+    Library source 'librarySource:librarySource'
+        src${File.separator}sampleLib${File.separator}librarySource
 
 Binaries
-    DefaultSampleBinary: 'sampleLibBinary'
+    DefaultSampleBinary 'sampleLibBinary'
         build using task: :sampleLibBinary
-    OtherSampleBinaryImpl: 'sampleLibOtherBinary'
+    OtherSampleBinaryImpl 'sampleLibOtherBinary'
         build using task: :sampleLibOtherBinary
 """))
     }
@@ -134,7 +163,7 @@ Binaries
         succeeds "tellTaskName"
     }
 
-    def "@ComponentBinaries supports additional parameters as rule inputs"() {
+    def "ComponentBinaries rule supports additional parameters as rule inputs"() {
         given:
         buildFile << """
         class CustomModel {
@@ -179,12 +208,13 @@ DefaultSampleLibrary 'sampleLib'
 --------------------------------
 
 Source sets
-    No source sets.
+    Library source 'librarySource:librarySource'
+        src${File.separator}sampleLib${File.separator}librarySource
 
 Binaries
-    DefaultSampleBinary: 'sampleLib1stBinary'
+    DefaultSampleBinary 'sampleLib1stBinary'
         build using task: :sampleLib1stBinary
-    DefaultSampleBinary: 'sampleLib2ndBinary'
+    DefaultSampleBinary 'sampleLib2ndBinary'
         build using task: :sampleLib2ndBinary
 """))
         where:

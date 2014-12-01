@@ -18,10 +18,8 @@ package org.gradle.nativeplatform.internal;
 import com.google.common.collect.Lists;
 import org.gradle.api.InvalidUserDataException;
 import org.gradle.api.Named;
-import org.gradle.language.base.FunctionalSourceSet;
 import org.gradle.nativeplatform.BuildType;
 import org.gradle.nativeplatform.Flavor;
-import org.gradle.platform.base.ComponentSpecIdentifier;
 
 import java.util.*;
 
@@ -31,12 +29,12 @@ public abstract class AbstractTargetedNativeComponentSpec extends AbstractNative
     private final Set<String> buildTypes = new HashSet<String>();
     private final Set<String> flavors = new HashSet<String>();
 
-    public AbstractTargetedNativeComponentSpec(ComponentSpecIdentifier id, FunctionalSourceSet sourceSet) {
-        super(id, sourceSet);
-    }
-
     public List<String> getTargetPlatforms() {
         return Lists.newArrayList(targetPlatforms);
+    }
+
+    public void targetPlatforms(String... platformSelectors) {
+        targetPlatform(platformSelectors);
     }
 
     public void targetPlatform(String... platformSelectors) {

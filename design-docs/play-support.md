@@ -32,63 +32,18 @@ Performance should be comparable to SBT:
 
 # Milestone 1
 
-## Feature: Developer compiles Java and Scala source for Play application
+For the first milestone, a developer will be able to define, build and run a simple play application that consists
+of routes and templates, Java and Scala sources, as well as Javascript, CSS, CoffeeScript and LESSCSS sources.
 
-Developer uses the standard build lifecycle, such as `gradle assemble` or `gradle build` to compile the Java and Scala source for a Play application.
+In this milestone we are not dealing with:
+- Automatically rebuilding the play application when sources change
+- 3rd party dependencies for Java, Scala or Javascript. (This may change).
 
-- Introduce a 'play' plugin.
-- Adapt language plugins conventions to Play conventions
-    - need to include unmanaged dependencies from `lib/` as compile dependencies
-    - sub-projects have a slightly different layout to root project
+The goal is to get something working pretty quickly, and work to improve the configurability and discoverability over time.
 
-### Implementation
+## Feature: Developer builds, tests and runs the Play Application created by “activator new”
 
-Play plugin:
-
-- Defines a Play application component and an associated Jar binary.
-- Wires in the main source set as input, and hooks up the appropriate dependencies.
-
-### Open issues
-
-- Should use the new language plugins instead. Will require test execution and joint Java - Scala compilation.
-
-### Story: Jvm Library is built from Scala source files
-
-Add a `scala-lang` plugin that provides Scala language support for Jvm components:
-
-    plugins {
-        id 'jvm-component'
-        id 'scala-lang'
-    }
-
-    jvm {
-        libraries {
-            mylib
-        }
-    }
-
-- Running `gradle assemble` builds the Jar
-- No dependencies, other than Scala version
-- No joint compilation with Java
-- Can build a library from both Java and Scala
-- Uses a hard-coded Scala version.
-
-### Story: Build author declares target Scala platform
-
-- Provide a DSL to declare the target Scala platform for Scala source files.
-- Implies Java version?
-- Visible to Java source for that component as well?
-- Scala version should be visible in components report and dependencies reports.
-
-#### Test cases
-
-- Test against multiple versions of Scala.
-
-#### Open issues
-
-- Replace `ScalaRuntime` with Scala platform and some kind of toolchain.
-
-### Story: Build author declares a Play application
+### Story: Build author declares and builds a Play application component
 
 Add a `play-application` plugin that provides Play application component:
 
@@ -96,59 +51,217 @@ Add a `play-application` plugin that provides Play application component:
         id 'play-application'
     }
 
-    jvm {
-        playApplications {
-            helloworld {
+    model {
+        components {
+            myapp(PlayApplicationSpec) 
+        }
+    }
+
+- ~~Running `gradle assemble` builds an empty Jar file.~~
+- ~~Running `gradle components` shows some basic details about the Play application. ~~
+- In this story, no source files are supported.
+
+#### Test cases
+
+- ~~component report shows PlayApplicationSpec with~~ 
+- ~~version info about~~
+      - ~~play  (declared in the plugin)~~
+      - ~~java  (picked current version for now)~~
+- ~~assemble creates an empty jar file~~
+
+### Story: Developer builds a default generated Play application
+
+- Using hard-coded:
+    - Locations of java/scala files
+    - Locations of routes file
+    - Locations of templates files
+    - Dependencies of the play ("com.typesafe.play:play_2.11:2.3.5")
+    - Dependency of template compiler ("com.typesafe.play:twirl-compiler_2.11:1.0.2)
+    - Dependency of routes compiler
+- resolve different play dependencies from
+    - typesafe maven release repository (https://repo.typesafe.com/typesafe/maven-releases)
+
+- setup TwirlCompiler task type
+- setup RoutesCompiler task type
+- Compile routes to scala and java
+- Compile templates to scala
+- Compile all scala (app/*/*.{scala,java}, output of: conf/routes, output of: app/views/*.scala.html) files
+- Output class files are part of assemble jar file
+
+#### Test cases
+
+- verify that generated scala template files exists
+- verify that generated scala/java route files exists
+- `gradle assemble` should trigger compile task and output jar should contain class files
+
+#### Open issues
+
+- Reasonable default memory settings for forked compilation
+
+### Story: Developer runs Play application
+
+Extend the Play support to allow the Play application to be executed.
+
+- Running `gradle assemble` produces an executable Jar that, when executed, runs the Play application.
+- Running `gradle run<ComponentName>` builds and executes the Play application.
+
+At this stage, only the default generated Play application is supported, with a hard-coded version of Scala and Play.
+          
+#### Test cases
+
+- verify that play app can be built and executed with play version 2.3.5 and 2.2.3
+- Can configure port for launched PlayApp: default is 9000
+
+### Story: Basic support for multiple play versions
+
+- Can build play application with Play 2.2.3 on Scala 2.10, and Play 2.3.5 on Scala 2.11
+
+#### Test cases
+
+- Verify building and running the 'activator new' app with Play 2.2.3 and Play 2.3.5
+
+#### Open issues
+
+- Compile Scala wrappers around different Play versions, and load these via reflection
+
+### Story: Developer tests the Play Seed application
+
+- Add a `Test` test task per binary that runs the play application tests based on JUnit TestRunner against the binary
+- The test sources are compiled against the binary and the `play-test` dependency based on play and scala version of the platform
+- Can execute Play unit and integration tests
+- Fails with a nice error message
+
+#### Test cases
+- Verify that running `gradle testBinary` works expected on the tests generated by `activator new`:
+- Verify that tests executes correctly (lists the correct amount of test cases?)
+- Verify that a failing test fails
+
+#### Open issues
+
+- Model test suites
+
+## Feature: Developer builds Play application with custom Java, Scala, routes and templates
+
+### Story: Developer includes Scala sources in Jvm library
+
+Add a new 'scala-lang' plugin to add Scala language support implemented in the same manner as the JavaLanguagePlugin.
+
+    plugins {
+        id 'jvm-component'
+        id 'scala-lang'
+    }
+    model {
+        components {
+            myLib(JvmLibrarySpec)
+            myOtherLib(JvmLibrarySpec) {
+                sources {
+                    scala {
+                        source.srcDir "src/myOtherLib/myScala"
+                    }
+                    otherScala(ScalaSourceSet) {
+                        source.srcDir "src/otherScala"
+                    }
+                }
             }
         }
     }
 
-- Running `gradle assemble` builds the Jars.
-- No dependencies, other than Scala version and Play version.
-- Can build from Java or Scala or both.
-- App is not usable without routes provided by later story.
-- Uses a hard-coded Play version.
+##### Test cases
 
-### Story: Build author declares target Play platform
+- Scala source set(s) and locations are visible in the components report
+- Uses scala sources from conventional location
+- Can configure location of scala sources
+- Build is incremental:
+    - Changed in Scala comment does not result in rebuilding JVM library
+    - Change in Scala compile properties triggers recompilation
+    - Change in Scala platform triggers recompilation
+    - Change in Scala ToolChain triggers recompilation
+    - Removal of Scala source files removes classes for that source file, which are removed from JVM library
+- Compile is incremental: consider sources A, B, C where B depends on C
+    - Change A, only A is recompiled
+    - Change B, only B is recompiled
+    - Change C, only B & C are recompiled
+    - Remove A, outputs for A are removed
+- Can include both Java and Scala sources in lib: no cross-compilation
 
-- Provide a DSL to declare the target Play platform for a Play application.
-- Implies Scala version and Java version?
-- Should also be able to attach to a JVM library, to create a Play library.
-- Play version should be visible in components report and dependencies reports.
+### Story: Developer configures Scala and Java sources for Play application
+
+Extend the Play support to allow full control over compilation of Scala and Java sources.
+
+- Apply ScalaLanguagePlugin and JavaLanguagePlugin 
+    - _not_ ScalaBasePlugin or JavaBasePlugin
+- Sources have no dependencies other than Scala and Play.
+- All Scala and Java sources in a Play application are joint-compiled
+
+
+    plugins {
+        id 'play-application'
+    }
+    model {
+        components {
+            play(PlayApplicationSpec) {
+                sources {
+                    extraJava(JavaSourceSet) {
+                        source.srcDir "src/extraJava"
+                    }
+                    extraScala(ScalaSourceSet) {
+                        source.srcDir "src/extraScala"
+                    }
+                }
+            }
+        }
+    }
 
 #### Test cases
 
-- Test against multiple versions of Play. Should include version 2.2.3
+- Scala and Java source sets (and locations) are visible in the components report
+- Can provide additional Scala sources for a Play application, with dependencies on main sources
+- Can provide additional Java sources for a Play application, with dependencies on main sources
+- Build is incremental:
+    - Changed in Scala comment does not result in rebuilding Play app
+    - Changed in Java comment does not result in rebuilding Play app
+    - Change in Scala or Java compile properties triggers recompilation
+    - Change in Platform triggers recompilation
+    - Change in ToolChain triggers recompilation
+    - Removal of Scala/Java source files removes classes from the Play app
 
-## Feature: Developer compiles route and template source for Play application
+#### Open issues
 
-Extend the standard build lifecycle to compile the route and template source files to bytecode.
+- Ability for Twirl & Routes compilers to prefer Java types in generated sources (i.e. SBT enablePlugins(PlayJava))
 
-- Compile routes and templates
-- Define source sets for each type of source file
-- Compilation should be incremental and remove stale outputs
+### Story: Developer configures template sources for Play application
 
-### Implementation
+Add a TwirlSourceSet and permit multiple instances in a Play application
 
-Play plugin:
+- Twirl sources show up in component report
+- Allow Twirl source location to be configured
+- Allow additional Twirl source sets to be configured
+- Define a generated ScalaSourceSet as the output for each TwirlSourceSet compilation
+    - Generated ScalaSourceSet will be one of the Scala compile inputs
+    - Generated ScalaSourceSet should not be visible in components report
+- Source generation and compilation should be incremental and remove stale outputs.
 
-- Defines Play template file source set type.
-- Invokes route source generator and includes the resulting Scala source for joint compilation.
-- Invokes template source generator and includes the resulting Scala source for joint compilation.
-- Cleans stale outputs.
+#### Open issues
 
-### Test cases
+- handle non html templates
 
-- Route depends on Java class.
-- Template depends on Java class that depends on the template.
-- Template depends on Scala class that depends on the template.
+### Story: Developer defines routes for Play application
 
-### Open issues
+Add a RoutesSourceSet and permit multiple instances in a Play application
 
-- Can generate template source in parallel?
-- Will need to cross compile the route and template compiler integrations against multiple Play versions.
+- Routes sources show up in component report
+- Allow Routes source location to be configured
+- Allow additional Routes source sets to be configured
+- Define a generated ScalaSourceSet as the output for each RoutesSourceSet compilation
+    - Generated ScalaSourceSet will be one of the Scala compile inputs
+    - Generated ScalaSourceSet should not be visible in components report
+- Source generation and compilation should be incremental and remove stale outputs.
 
-## Feature: Developer compiles assets for Play application
+#### Open issues
+
+- handle .routes files
+
+## Feature: Developer includes compiled assets in Play application (Javascript, LESS, CoffeeScript)
 
 Extend the standard build lifecycle to compile the front end assets to CSS and Javascript.
 
@@ -199,6 +312,123 @@ Play plugin:
 
 - Integration with existing Gradle javascript plugins.
 
+### Story: Developer includes compiled coffeescript assets in Play application
+
+Add a coffee script plugin as well as JavaScriptSourceSet and CoffeeScriptSourceSets and permit multiple instances.
+
+    plugins {
+        id 'play-application'
+        id 'play-coffeescript'
+    }
+
+    model {
+        components {
+            play(PlayApplicationSpec) {
+                sources {
+                    extraCoffeeScript(CoffeeScriptSourceSet) {
+                        sources.srcDir "src/extraCoffeeScript"
+                    }
+
+                    extraJavaScript(JavaScriptSourceSet) {
+                        sources.srcDir "src/extraJavaScript"
+                    }
+                }
+            }
+        }
+    }
+
+- Default coffeescript sourceset should be "app/assets/**/*.coffee"
+- Compiled coffeescript files will be added to the jar relative to srcDir
+- Default javascript sourceset should be "app/assets/**/*.js"
+
+#### Test cases
+- Coffeescript and javascript sources are visible in the components report
+- Coffeescript sources successfully compiled to javascript
+- Compiled coffeescript is added to jar relative to srcDir
+- Javascript sources are copied directly into jar relative to srcDir
+- Can provide additional coffeescript sources
+- Can provide additional javascript sources
+- Build is incremental:
+    - Change in coffeescript source triggers recompile
+    - No change in coffeescript source does not trigger a recompile
+    - Removal of generated javascript triggers recompile
+    - Removal of coffeescript source files removes generated javascript
+
+## Feature: Developer chooses target Play, Scala and/or Java platform
+
+### Story: Compilation and building is incremental with respect to changes in Play platform
+
+### Story: Execute Play integration tests against all supported Play platforms
+
+- Most Play integration tests should be able to run against different supported platforms
+    - Developer build should run against single version by default
+    - CI should run against all supported versions (using '-PtestAllPlatforms=true')
+
+### Story: Build author declares target Play platform
+
+    model {
+        components {
+            play(PlayApplicationSpec) {
+                platform play: "2.3.6"
+                platform play: "2.2.3"
+            }
+        }
+    }
+
+#### Test cases
+
+- For each supported Play version: 2.2.3, 2.3.5, 2.3.6
+    - Can assemble Play application
+    - Can run Play application
+    - Can test Play application
+- Can build & test multiple Play application variants in single build invocation
+    - `gradle assemble` builds all variants
+    - `gradle test` tests all variants
+- Play version implies Scala version and Java version
+- Play version should be visible in components report and dependencies reports.
+
+### Story: Build author declares target Scala platform
+
+    model {
+        components {
+            play(PlayApplicationSpec) {
+                platform play: "2.3.5", scala: "2.11"
+            }
+        }
+    }
+
+
+### Story: Build author declares target Java platform for Play application
+
+    model {
+        components {
+            play(PlayApplicationSpec) {
+                platform play: "2.3.5", scala: "2.11", java: "1.8"
+            }
+        }
+    }
+
+### Story: New target platform DSL for JVM components
+
+    model {
+        components {
+            jvmLib(JvmLibrarySpec) {
+                platform java: "1.8"
+            }
+        }
+    }
+
+### Story: New target platform DSL for native components
+
+    model {
+        components {
+            nativeLib(NativeLibrarySpec) {
+                platform os: "windows", arch: "x86"
+            }
+        }
+    }
+
+
 ## Feature: Developer builds and runs Play application
 
 Introduce some lifecycle tasks to allow the developer to run or start the Play application. For example, the
@@ -236,6 +466,15 @@ developer may run `gradle stage` to stage the local application, or `gradle dist
 Play plugin:
 
 - Defines a distribution that bundles a Play server and Play application.
+
+## Further features
+
+- Internal mechanism for plugin to inject renderer(s) into components report.
+- Model language transformations, and change Play support to allow a Play application to take any JVM language as input.
+- Declare dependencies on other Java/Scala libraries
+- Control joint compilation of sources based on source set dependencies.
+- Build multiple variants of a Play application.
+- Generate an application install, eg with launcher scripts and so on.
 
 # Milestone 2
 
@@ -355,7 +594,7 @@ Allow the Scala interactive console to be launched from the command-line.
 
 ## Bootstrap a new Play project
 
-Extend the build init plugin so that it can bootstrap a new Play project, producing the same output as `play new` except with a Gradle build instead of
+Extend the build init plugin so that it can bootstrap a new Play project, producing the same output as `activator new` except with a Gradle build instead of
 an SBT build.
 
 # Later milestones

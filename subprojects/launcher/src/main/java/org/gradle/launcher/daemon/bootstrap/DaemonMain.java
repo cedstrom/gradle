@@ -29,6 +29,7 @@ import org.gradle.launcher.daemon.server.Daemon;
 import org.gradle.launcher.daemon.server.DaemonServices;
 import org.gradle.logging.LoggingManagerInternal;
 import org.gradle.logging.LoggingServiceRegistry;
+import org.gradle.messaging.remote.Address;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -76,7 +77,7 @@ public class DaemonMain extends EntryPoint {
         LOGGER.debug("Assuming the daemon was started with following jvm opts: {}", startupOpts);
 
         DaemonServerConfiguration parameters = new DefaultDaemonServerConfiguration(daemonUid, daemonBaseDir, idleTimeoutMs, startupOpts);
-        LoggingServiceRegistry loggingRegistry = LoggingServiceRegistry.newProcessLogging();
+        LoggingServiceRegistry loggingRegistry = LoggingServiceRegistry.newCommandLineProcessLogging();
         LoggingManagerInternal loggingManager = loggingRegistry.newInstance(LoggingManagerInternal.class);
         DaemonServices daemonServices = new DaemonServices(parameters, loggingRegistry, loggingManager);
         File daemonLog = daemonServices.getDaemonLogFile();
@@ -89,8 +90,9 @@ public class DaemonMain extends EntryPoint {
         try {
             DaemonContext daemonContext = daemonServices.get(DaemonContext.class);
             Long pid = daemonContext.getPid();
-            daemonStarted(pid, daemonLog);
+            daemonStarted(pid, daemon.getUid(), daemon.getAddress(), daemonLog);
 
+            // Block until idle
             daemon.requestStopOnIdleTimeout(parameters.getIdleTimeout(), TimeUnit.MILLISECONDS);
         } finally {
             daemon.stop();
@@ -103,9 +105,9 @@ public class DaemonMain extends EntryPoint {
         System.exit(1);
     }
 
-    protected void daemonStarted(Long pid, File daemonLog) {
+    protected void daemonStarted(Long pid, String uid, Address address, File daemonLog) {
         //directly printing to the stream to avoid log level filtering.
-        new DaemonStartupCommunication().printDaemonStarted(originalOut, pid, daemonLog);
+        new DaemonStartupCommunication().printDaemonStarted(originalOut, pid, uid, address, daemonLog);
         try {
             originalOut.close();
             originalErr.close();
@@ -142,7 +144,7 @@ public class DaemonMain extends EntryPoint {
 
         //after redirecting we need to add the new std out/err to the renderer singleton
         //so that logging gets its way to the daemon log:
-        loggingManager.addStandardOutputAndError();
+        loggingManager.attachSystemOutAndErr();
 
         //Making the daemon infrastructure log with DEBUG. This is only for the infrastructure!
         //Each build request carries it's own log level and it is used during the execution of the build (see LogToClient)

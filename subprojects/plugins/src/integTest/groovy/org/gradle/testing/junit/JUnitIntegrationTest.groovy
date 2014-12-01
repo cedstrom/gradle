@@ -27,7 +27,6 @@ import org.junit.Test
 import spock.lang.Issue
 
 import static org.gradle.util.Matchers.containsLine
-import static org.gradle.util.Matchers.containsText
 import static org.hamcrest.Matchers.*
 import static org.junit.Assert.assertThat
 
@@ -48,28 +47,7 @@ public class JUnitIntegrationTest extends AbstractIntegrationTest {
         result.assertTestClassesExecuted('org.gradle.OkTest', 'org.gradle.OtherTest')
 
         result.testClass('org.gradle.OkTest').assertTestPassed('ok')
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('This is test stdout'))
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('non-asci char: ż'))
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('no EOL'))
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('class loaded'))
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('test constructed'))
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('stdout from another thread'))
-        result.testClass('org.gradle.OkTest').assertStderr(containsString('This is test stderr'))
-        result.testClass('org.gradle.OkTest').assertStderr(containsString('this is a warning'))
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('sys out from another test method'))
-        result.testClass('org.gradle.OkTest').assertStderr(containsString('sys err from another test method'))
-
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('before class out'))
-        result.testClass('org.gradle.OkTest').assertStderr(containsString('before class err'))
-        result.testClass('org.gradle.OkTest').assertStdout(containsString('after class out'))
-        result.testClass('org.gradle.OkTest').assertStderr(containsString('after class err'))
-
         result.testClass('org.gradle.OtherTest').assertTestPassed('ok')
-        result.testClass('org.gradle.OtherTest').assertStdout(containsString('This is other stdout'))
-        result.testClass('org.gradle.OtherTest').assertStdout(containsString('other class loaded'))
-        result.testClass('org.gradle.OtherTest').assertStdout(containsString('other test constructed'))
-        result.testClass('org.gradle.OtherTest').assertStderr(containsString('This is other stderr'))
-        result.testClass('org.gradle.OtherTest').assertStderr(containsString('this is another warning'))
     }
 
     @Test
@@ -412,34 +390,6 @@ public class JUnitIntegrationTest extends AbstractIntegrationTest {
         result.assertTestClassesExecuted('org.gradle.Test1', 'org.gradle.Test2')
         result.testClass('org.gradle.Test1').assertTestPassed('ok')
         result.testClass('org.gradle.Test2').assertTestPassed('ok')
-    }
-
-    @Test
-    void canHandleMultipleThreadsWritingToSystemOut() {
-        def result = executer.withTasks("test").run()
-        assert result.getOutput().contains("thread 0 out")
-        assert result.getOutput().contains("thread 1 out")
-        assert result.getOutput().contains("thread 2 out")
-
-        def junitResult = new DefaultTestExecutionResult(testDirectory)
-        def testClass = junitResult.testClass("org.gradle.SystemOutTest")
-        testClass.assertStdout(containsText("thread 0 out"))
-        testClass.assertStdout(containsText("thread 1 out"))
-        testClass.assertStdout(containsText("thread 2 out"))
-    }
-
-    @Test
-    void canHandleMultipleThreadsWritingToSystemErr() {
-        def result = executer.withTasks("test").run()
-        assert result.getOutput().contains("thread 0 err")
-        assert result.getOutput().contains("thread 1 err")
-        assert result.getOutput().contains("thread 2 err")
-
-        def junitResult = new DefaultTestExecutionResult(testDirectory)
-        def testClass = junitResult.testClass("org.gradle.SystemErrTest")
-        testClass.assertStderr(containsText("thread 0 err"))
-        testClass.assertStderr(containsText("thread 1 err"))
-        testClass.assertStderr(containsText("thread 2 err"))
     }
 
     @Test

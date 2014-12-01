@@ -123,7 +123,7 @@ public class DefaultPluginRequestApplicator implements PluginRequestApplicator {
             final String id = entry.getValue();
             applyPlugin(request, id, new Runnable() {
                 public void run() {
-                    target.getPlugins().apply(id);
+                    target.apply(Collections.singletonMap("plugin", id));
                 }
             });
         }
@@ -158,8 +158,8 @@ public class DefaultPluginRequestApplicator implements PluginRequestApplicator {
                 throw new InvalidPluginException(
                         String.format(
                                 "Could not apply requested plugin %s as it does not provide a plugin with id '%s'."
-                                + " This is caused by an incorrect plugin implementation."
-                                + " Please contact the plugin author(s).",
+                                        + " This is caused by an incorrect plugin implementation."
+                                        + " Please contact the plugin author(s).",
                                 request, id
                         ),
                         e

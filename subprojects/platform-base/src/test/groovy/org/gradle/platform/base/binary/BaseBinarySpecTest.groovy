@@ -16,15 +16,12 @@
 
 package org.gradle.platform.base.binary
 
-import org.gradle.api.Task
 import org.gradle.internal.reflect.DirectInstantiator
 import org.gradle.platform.base.ModelInstantiationException
-import org.gradle.platform.base.internal.BinaryNamingScheme
 import spock.lang.Specification
 
 class BaseBinarySpecTest extends Specification {
     def instantiator = new DirectInstantiator()
-    def binaryNamingScheme = Mock(BinaryNamingScheme)
 
     def "cannot instantiate directly"() {
         when:
@@ -37,7 +34,7 @@ class BaseBinarySpecTest extends Specification {
 
     def "cannot create instance of base class"() {
         when:
-        BaseBinarySpec.create(BaseBinarySpec, binaryNamingScheme, instantiator)
+        BaseBinarySpec.create(BaseBinarySpec, "sampleBinary", instantiator)
 
         then:
         def e = thrown ModelInstantiationException
@@ -45,40 +42,23 @@ class BaseBinarySpecTest extends Specification {
     }
 
     def "binary has name and sensible display name"() {
-        def binary = BaseBinarySpec.create(MySampleBinary, binaryNamingScheme, instantiator)
+        def binary = BaseBinarySpec.create(MySampleBinary, "sampleBinary", instantiator)
 
-        when:
-        _ * binaryNamingScheme.lifecycleTaskName >> "sampleBinary"
-
-        then:
+        expect:
         binary.class == MySampleBinary
         binary.name == "sampleBinary"
-        binary.displayName == "MySampleBinary: 'sampleBinary'"
+        binary.displayName == "MySampleBinary 'sampleBinary'"
     }
 
     def "create fails if subtype does not have a public no-args constructor"() {
         when:
-        BaseBinarySpec.create(MyConstructedBinary, binaryNamingScheme, instantiator)
+        BaseBinarySpec.create(MyConstructedBinary, "sampleBinary", instantiator)
 
         then:
         def e = thrown ModelInstantiationException
         e.message == "Could not create binary of type MyConstructedBinary"
         e.cause instanceof IllegalArgumentException
         e.cause.message.startsWith "Could not find any public constructor for class"
-    }
-
-    def "getTasks returns tasks binary depends on"() {
-        given:
-        def binary = BaseBinarySpec.create(MySampleBinary, binaryNamingScheme, instantiator)
-        def lifecycleTask = Mock(Task)
-        def customTask= Mock(Task)
-
-        when:
-        binary.buildTask = lifecycleTask
-        and:
-        binary.builtBy(customTask)
-        then:
-        binary.tasks as Set == [customTask] as Set
     }
 
     static class MySampleBinary extends BaseBinarySpec {

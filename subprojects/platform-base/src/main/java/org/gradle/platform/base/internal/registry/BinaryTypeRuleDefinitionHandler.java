@@ -21,14 +21,12 @@ import org.gradle.api.NamedDomainObjectFactory;
 import org.gradle.internal.reflect.DirectInstantiator;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.reflect.JavaReflectionUtil;
-import org.gradle.model.internal.core.ModelType;
+import org.gradle.model.internal.type.ModelType;
 import org.gradle.platform.base.BinaryContainer;
 import org.gradle.platform.base.BinarySpec;
 import org.gradle.platform.base.BinaryType;
 import org.gradle.platform.base.BinaryTypeBuilder;
 import org.gradle.platform.base.binary.BaseBinarySpec;
-import org.gradle.platform.base.internal.BinaryNamingScheme;
-import org.gradle.platform.base.internal.DefaultBinaryNamingSchemeBuilder;
 
 public class BinaryTypeRuleDefinitionHandler extends ComponentModelRuleDefinitionHandler<BinaryType, BinarySpec, BaseBinarySpec> {
 
@@ -57,13 +55,9 @@ public class BinaryTypeRuleDefinitionHandler extends ComponentModelRuleDefinitio
         private <T extends BinarySpec, U extends BaseBinarySpec> void doRegister(BinaryContainer binaries, ModelType<T> type, final ModelType<U> implementation) {
             binaries.registerFactory(type.getConcreteClass(), new NamedDomainObjectFactory<T>() {
                 public T create(String name) {
-                    BinaryNamingScheme binaryNamingScheme = new DefaultBinaryNamingSchemeBuilder()
-                            .withComponentName(name)
-                            .build();
-
                     // safe because we implicitly know that U extends V, but can't express this in the type system
                     @SuppressWarnings("unchecked")
-                    T created = (T) BaseBinarySpec.create(implementation.getConcreteClass(), binaryNamingScheme, instantiator);
+                    T created = (T) BaseBinarySpec.create(implementation.getConcreteClass(), name, instantiator);
 
                     return created;
                 }

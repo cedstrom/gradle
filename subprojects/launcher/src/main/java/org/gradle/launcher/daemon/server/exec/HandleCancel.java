@@ -17,7 +17,8 @@ package org.gradle.launcher.daemon.server.exec;
 
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
-import org.gradle.internal.UncheckedException;
+import org.gradle.launcher.daemon.server.api.DaemonCommandAction;
+import org.gradle.launcher.daemon.server.api.DaemonCommandExecution;
 
 /**
  * Install a handler for cancel request processed asynchronously while the daemon proceeds to build execution.
@@ -33,13 +34,9 @@ public class HandleCancel implements DaemonCommandAction {
             }
         });
         try {
-            try {
-                execution.proceed();
-            } finally {
-                execution.getConnection().onCancel(null);
-            }
-        } catch (Exception e) {
-            throw UncheckedException.throwAsUncheckedException(e);
+            execution.proceed();
+        } finally {
+            execution.getConnection().onCancel(null);
         }
     }
 }

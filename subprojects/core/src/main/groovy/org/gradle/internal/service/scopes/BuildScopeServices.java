@@ -32,7 +32,10 @@ import org.gradle.api.internal.file.FileLookup;
 import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.initialization.DefaultScriptHandlerFactory;
 import org.gradle.api.internal.initialization.ScriptHandlerFactory;
-import org.gradle.api.internal.plugins.CorePluginRegistry;
+import org.gradle.api.internal.initialization.loadercache.ClassLoaderCache;
+import org.gradle.api.internal.initialization.loadercache.ClassLoaderCacheFactory;
+import org.gradle.api.internal.plugins.DefaultPluginRegistry;
+import org.gradle.api.internal.plugins.PluginInspector;
 import org.gradle.api.internal.plugins.PluginRegistry;
 import org.gradle.api.internal.project.*;
 import org.gradle.api.internal.project.taskfactory.AnnotationProcessingTaskFactory;
@@ -46,6 +49,8 @@ import org.gradle.cache.internal.DefaultCacheRepository;
 import org.gradle.cache.internal.DefaultCacheScopeMapping;
 import org.gradle.configuration.*;
 import org.gradle.configuration.project.*;
+import org.gradle.execution.ProjectConfigurer;
+import org.gradle.execution.TaskPathProjectEvaluator;
 import org.gradle.groovy.scripts.DefaultScriptCompilerFactory;
 import org.gradle.groovy.scripts.ScriptCompilerFactory;
 import org.gradle.groovy.scripts.ScriptExecutionListener;
@@ -70,6 +75,7 @@ import org.gradle.logging.ShowStacktrace;
 import org.gradle.messaging.actor.ActorFactory;
 import org.gradle.messaging.actor.internal.DefaultActorFactory;
 import org.gradle.messaging.remote.MessagingServer;
+import org.gradle.model.internal.inspect.ModelRuleSourceDetector;
 import org.gradle.plugin.use.internal.PluginRequestApplicator;
 import org.gradle.process.internal.DefaultWorkerProcessFactory;
 import org.gradle.process.internal.WorkerProcessBuilder;
@@ -82,6 +88,7 @@ import org.gradle.util.GradleVersion;
  * Contains the singleton services for a single build invocation.
  */
 public class BuildScopeServices extends DefaultServiceRegistry {
+
     public BuildScopeServices(final ServiceRegistry parent, final StartParameter startParameter) {
         super(parent);
         register(new Action<ServiceRegistration>() {
@@ -191,7 +198,9 @@ public class BuildScopeServices extends DefaultServiceRegistry {
         return new AsmBackedEmptyScriptGenerator();
     }
 
-    protected FileCacheBackedScriptClassCompiler createFileCacheBackedScriptClassCompiler(CacheRepository cacheRepository, EmptyScriptGenerator emptyScriptGenerator, final StartParameter startParameter, ProgressLoggerFactory progressLoggerFactory) {
+    protected FileCacheBackedScriptClassCompiler createFileCacheBackedScriptClassCompiler(
+            CacheRepository cacheRepository, EmptyScriptGenerator emptyScriptGenerator, final StartParameter startParameter,
+            ProgressLoggerFactory progressLoggerFactory, ClassLoaderCache classLoaderCache) {
         CacheValidator scriptCacheInvalidator = new CacheValidator() {
             public boolean isValid() {
                 return !startParameter.isRecompileScripts();
@@ -200,8 +209,7 @@ public class BuildScopeServices extends DefaultServiceRegistry {
         return new FileCacheBackedScriptClassCompiler(
                 cacheRepository,
                 scriptCacheInvalidator,
-                new DefaultScriptCompilationHandler(
-                        emptyScriptGenerator),
+                new DefaultScriptCompilationHandler(emptyScriptGenerator, classLoaderCache),
                 progressLoggerFactory
         );
     }
@@ -215,7 +223,8 @@ public class BuildScopeServices extends DefaultServiceRegistry {
                 get(ScriptHandlerFactory.class),
                 get(PluginRequestApplicator.class),
                 get(FileLookup.class),
-                get(DocumentationRegistry.class)
+                get(DocumentationRegistry.class),
+                get(ModelRuleSourceDetector.class)
         );
     }
 
@@ -269,8 +278,12 @@ public class BuildScopeServices extends DefaultServiceRegistry {
                 new LongIdGenerator());
     }
 
-    protected BuildConfigurer createBuildConfigurer(BuildCancellationToken cancellationToken) {
-        return new DefaultBuildConfigurer(cancellationToken);
+    protected ProjectConfigurer createProjectConfigurer(BuildCancellationToken cancellationToken) {
+        return new TaskPathProjectEvaluator(cancellationToken);
+    }
+
+    protected BuildConfigurer createBuildConfigurer(ProjectConfigurer projectConfigurer) {
+        return new DefaultBuildConfigurer(projectConfigurer);
     }
 
     protected ProjectAccessListener createProjectAccessListener() {
@@ -281,16 +294,21 @@ public class BuildScopeServices extends DefaultServiceRegistry {
         return new ProfileEventAdapter(get(BuildRequestMetaData.class), get(TimeProvider.class), get(ListenerManager.class).getBroadcaster(ProfileListener.class));
     }
 
-    protected PluginRegistry createPluginRegistry() {
-        return new CorePluginRegistry(get(ClassLoaderRegistry.class).getPluginsClassLoader(), new DependencyInjectingInstantiator(this));
+    protected PluginRegistry createPluginRegistry(PluginInspector pluginInspector) {
+        return new DefaultPluginRegistry(pluginInspector, get(ClassLoaderRegistry.class).getPluginsClassLoader());
     }
 
     protected ServiceRegistryFactory createServiceRegistryFactory(final ServiceRegistry services) {
         return new BuildScopeServiceRegistryFactory(services);
     }
 
-    protected ClassLoaderScopeRegistry createClassLoaderScopeRegistry(ClassLoaderRegistry classLoaderRegistry) {
-        return new DefaultClassLoaderScopeRegistry(classLoaderRegistry);
+    protected ClassLoaderScopeRegistry createClassLoaderScopeRegistry(ClassLoaderRegistry classLoaderRegistry, ClassLoaderCache classLoaderCache) {
+        return new DefaultClassLoaderScopeRegistry(classLoaderRegistry, classLoaderCache);
+    }
+
+    protected ClassLoaderCache createClassLoaderCache(ClassLoaderCacheFactory cacheFactory) {
+        //the factory is global and makes decision whether classloader cache is shared between builds in given daemon process
+        return cacheFactory.create();
     }
 
     protected ProjectTaskLister createProjectTaskLister() {
@@ -303,6 +321,14 @@ public class BuildScopeServices extends DefaultServiceRegistry {
 
     protected ComponentTypeRegistry createComponentTypeRegistry() {
         return new DefaultComponentTypeRegistry();
+    }
+
+    protected ModelRuleSourceDetector createModelRuleSourceDetector() {
+        return new ModelRuleSourceDetector();
+    }
+
+    protected PluginInspector createPluginInspector(ModelRuleSourceDetector modelRuleSourceDetector) {
+        return new PluginInspector(modelRuleSourceDetector);
     }
 
     private class DependencyMetaDataProviderImpl implements DependencyMetaDataProvider {

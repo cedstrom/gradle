@@ -20,6 +20,7 @@ import org.gradle.api.internal.classpath.EffectiveClassPath;
 import org.gradle.initialization.BuildCancellationToken;
 import org.gradle.initialization.layout.BuildLayout;
 import org.gradle.initialization.layout.BuildLayoutFactory;
+import org.gradle.internal.Factory;
 import org.gradle.internal.UncheckedException;
 import org.gradle.internal.classpath.ClassPath;
 import org.gradle.internal.classpath.DefaultClassPath;
@@ -35,13 +36,16 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.net.URI;
 import java.util.LinkedHashSet;
-import java.util.Set;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 public class DistributionFactory {
-    private final ExecutorServiceFactory executorFactory;
+    private final Factory<? extends ExecutorService> executorFactory;
 
-    public DistributionFactory(ExecutorServiceFactory executorFactory) {
+    public DistributionFactory(Factory<? extends ExecutorService> executorFactory) {
         this.executorFactory = Preconditions.checkNotNull(executorFactory);
     }
 
@@ -96,9 +100,9 @@ public class DistributionFactory {
     private static class ZippedDistribution implements Distribution {
         private InstalledDistribution installedDistribution;
         private final WrapperConfiguration wrapperConfiguration;
-        private final ExecutorServiceFactory executorFactory;
+        private final Factory<? extends ExecutorService> executorFactory;
 
-        private ZippedDistribution(WrapperConfiguration wrapperConfiguration, ExecutorServiceFactory executorFactory) {
+        private ZippedDistribution(WrapperConfiguration wrapperConfiguration, Factory<? extends ExecutorService> executorFactory) {
             this.wrapperConfiguration = wrapperConfiguration;
             this.executorFactory = executorFactory;
         }
@@ -114,7 +118,7 @@ public class DistributionFactory {
                         File installDir;
                         try {
                             File realUserHomeDir = userHomeDir != null ? userHomeDir : GradleUserHomeLookup.gradleUserHome();
-                            Install install = new Install(new ProgressReportingDownload(progressLoggerFactory), new PathAssembler(realUserHomeDir));
+                            Install install = new Install(new Logger(false), new ProgressReportingDownload(progressLoggerFactory), new PathAssembler(realUserHomeDir));
                             installDir = install.createDist(wrapperConfiguration);
                         } catch (FileNotFoundException e) {
                             throw new IllegalArgumentException(String.format("The specified %s does not exist.", getDisplayName()), e);
@@ -170,7 +174,7 @@ public class DistributionFactory {
             progressLogger.setDescription(String.format("Download %s", address));
             progressLogger.started();
             try {
-                new Download("Gradle Tooling API", GradleVersion.current().getVersion()).download(address, destination);
+                new Download(new Logger(false), "Gradle Tooling API", GradleVersion.current().getVersion()).download(address, destination);
             } finally {
                 progressLogger.completed();
             }
@@ -214,7 +218,7 @@ public class DistributionFactory {
             if (!libDir.isDirectory()) {
                 throw new IllegalArgumentException(String.format("The specified %s does not appear to contain a Gradle distribution.", locationDisplayName));
             }
-            Set<File> files = new LinkedHashSet<File>();
+            LinkedHashSet<File> files = new LinkedHashSet<File>();
             for (File file : libDir.listFiles()) {
                 if (file.getName().endsWith(".jar")) {
                     files.add(file);

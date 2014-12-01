@@ -50,6 +50,8 @@ public interface ProviderOperationParameters {
 
     Boolean isEmbedded();
 
+    Boolean isColorOutput(Boolean defaultValue);
+
     OutputStream getStandardOutput();
 
     OutputStream getStandardError();
@@ -57,6 +59,8 @@ public interface ProviderOperationParameters {
     Integer getDaemonMaxIdleTimeValue();
 
     TimeUnit getDaemonMaxIdleTimeUnits();
+
+    File getDaemonBaseDir(File defaultDaemonBaseDir);
 
     ProgressListenerVersion1 getProgressListener();
 

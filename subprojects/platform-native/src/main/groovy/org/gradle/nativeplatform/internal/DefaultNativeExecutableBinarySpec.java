@@ -16,22 +16,16 @@
 
 package org.gradle.nativeplatform.internal;
 
-import org.gradle.nativeplatform.*;
-import org.gradle.nativeplatform.internal.resolve.NativeDependencyResolver;
-import org.gradle.nativeplatform.platform.NativePlatform;
-import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
-import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
-import org.gradle.platform.base.internal.BinaryNamingScheme;
+import org.gradle.nativeplatform.NativeExecutableBinary;
+import org.gradle.nativeplatform.NativeExecutableBinarySpec;
+import org.gradle.nativeplatform.tasks.AbstractLinkTask;
+import org.gradle.nativeplatform.tasks.InstallExecutable;
 
 import java.io.File;
 
 public class DefaultNativeExecutableBinarySpec extends AbstractNativeBinarySpec implements NativeExecutableBinary, NativeExecutableBinarySpecInternal {
+    private final NativeExecutableBinarySpec.NativeBinaryTasks tasks = new DefaultNativeBinaryTasks(this);
     private File executableFile;
-
-    public DefaultNativeExecutableBinarySpec(NativeExecutableSpec executable, Flavor flavor, NativeToolChainInternal toolChain, PlatformToolProvider toolProvider,
-                                             NativePlatform platform, BuildType buildType, BinaryNamingScheme namingScheme, NativeDependencyResolver resolver) {
-        super(executable, flavor, toolChain, toolProvider, platform, buildType, namingScheme, resolver);
-    }
 
     public File getExecutableFile() {
         return executableFile;
@@ -43,5 +37,23 @@ public class DefaultNativeExecutableBinarySpec extends AbstractNativeBinarySpec 
 
     public File getPrimaryOutput() {
         return getExecutableFile();
+    }
+
+    public NativeExecutableBinarySpec.NativeBinaryTasks getTasks() {
+        return tasks;
+    }
+
+    public static class DefaultNativeBinaryTasks extends AbstractNativeBinarySpec.DefaultNativeBinaryTasks implements NativeExecutableBinarySpec.NativeBinaryTasks {
+        public DefaultNativeBinaryTasks(NativeBinarySpecInternal binary) {
+            super(binary);
+        }
+
+        public AbstractLinkTask getLink() {
+            return findSingleTaskWithType(AbstractLinkTask.class);
+        }
+
+        public InstallExecutable getInstall() {
+            return findSingleTaskWithType(InstallExecutable.class);
+        }
     }
 }

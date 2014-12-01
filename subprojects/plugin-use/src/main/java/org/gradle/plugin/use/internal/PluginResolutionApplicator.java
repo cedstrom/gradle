@@ -17,9 +17,10 @@
 package org.gradle.plugin.use.internal;
 
 import org.gradle.api.Action;
-import org.gradle.api.Plugin;
 import org.gradle.api.plugins.PluginAware;
 import org.gradle.plugin.use.resolve.internal.PluginResolution;
+
+import java.util.Collections;
 
 public class PluginResolutionApplicator implements Action<PluginResolution> {
 
@@ -30,7 +31,7 @@ public class PluginResolutionApplicator implements Action<PluginResolution> {
     }
 
     public void execute(PluginResolution pluginResolution) {
-        Class<? extends Plugin> pluginClass = pluginResolution.resolve();
-        target.getPlugins().apply(pluginClass);
+        Class<?> pluginClass = pluginResolution.resolve();
+        target.apply(Collections.singletonMap("plugin", pluginClass));
     }
 }

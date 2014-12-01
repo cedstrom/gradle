@@ -15,31 +15,42 @@
  */
 
 package org.gradle.nativeplatform.internal
+
 import org.gradle.api.Task
 import org.gradle.api.file.SourceDirectorySet
+import org.gradle.internal.reflect.DirectInstantiator
+import org.gradle.language.base.ProjectSourceSet
+import org.gradle.language.base.internal.DefaultFunctionalSourceSet
 import org.gradle.language.nativeplatform.HeaderExportingSourceSet
 import org.gradle.language.nativeplatform.NativeResourceSet
 import org.gradle.nativeplatform.BuildType
-import org.gradle.nativeplatform.NativeLibrarySpec
 import org.gradle.nativeplatform.internal.resolve.NativeDependencyResolver
 import org.gradle.nativeplatform.platform.NativePlatform
-import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider
+import org.gradle.nativeplatform.tasks.LinkExecutable
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal
+import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider
+import org.gradle.platform.base.component.BaseComponentSpec
 import org.gradle.platform.base.internal.DefaultBinaryNamingScheme
+import org.gradle.platform.base.internal.DefaultComponentSpecIdentifier
 import org.gradle.test.fixtures.file.TestNameTestDirectoryProvider
+import org.gradle.util.TestUtil
 import org.junit.Rule
 import spock.lang.Specification
 
+import static org.gradle.nativeplatform.internal.configure.DefaultNativeBinariesFactory.create
+
 class DefaultSharedLibraryBinarySpecTest extends Specification {
-    @Rule TestNameTestDirectoryProvider tmpDir
+    @Rule
+    TestNameTestDirectoryProvider tmpDir
+    def instantiator = new DirectInstantiator()
     def namingScheme = new DefaultBinaryNamingScheme("main", "sharedLibrary", [])
     final toolChain = Stub(NativeToolChainInternal)
     final platform = Stub(NativePlatform)
     final buildType = Stub(BuildType)
-    final library = Stub(NativeLibrarySpec)
     final resolver = Stub(NativeDependencyResolver)
     def sharedLibraryFile = Mock(File)
     def sharedLibraryLinkFile = Mock(File)
+    def tasks = new DefaultSharedLibraryBinarySpec.DefaultNativeBinaryTasks()
 
     def "has useful string representation"() {
         expect:
@@ -118,7 +129,24 @@ class DefaultSharedLibraryBinarySpecTest extends Specification {
         binary.linkFiles.files == [] as Set
     }
 
+    def "returns null for link and builder when none defined"() {
+        expect:
+        tasks.link == null
+        tasks.createOrLink == null
+    }
+
+    def "returns link task when defined"() {
+        when:
+        final linkTask = TestUtil.createTask(LinkExecutable)
+        tasks.add(linkTask)
+
+        then:
+        tasks.link == linkTask
+        tasks.createOrLink == linkTask
+    }
+
     private DefaultSharedLibraryBinarySpec getSharedLibrary() {
-        new DefaultSharedLibraryBinarySpec(library, new DefaultFlavor("flavorOne"), toolChain, Stub(PlatformToolProvider), platform, buildType, namingScheme, resolver)
+        final library = BaseComponentSpec.create(DefaultNativeLibrarySpec, new DefaultComponentSpecIdentifier("path", "libName"), new DefaultFunctionalSourceSet("name", new DirectInstantiator(), Stub(ProjectSourceSet)), instantiator);
+        return create(DefaultSharedLibraryBinarySpec, instantiator, library, namingScheme, resolver, toolChain, Stub(PlatformToolProvider), platform, buildType, new DefaultFlavor("flavorOne"))
     }
 }

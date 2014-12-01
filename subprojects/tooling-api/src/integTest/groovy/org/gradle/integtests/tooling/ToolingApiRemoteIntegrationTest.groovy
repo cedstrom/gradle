@@ -34,15 +34,15 @@ import static org.gradle.test.matchers.UserAgentMatcher.matchesNameAndVersion
 
 class ToolingApiRemoteIntegrationTest extends AbstractIntegrationSpec {
     @Rule HttpServer server = new HttpServer()
-    final ToolingApi toolingApi = new ToolingApi(distribution, executer.gradleUserHomeDir, temporaryFolder, false)
+    final ToolingApi toolingApi = new ToolingApi(distribution, temporaryFolder)
 
     void setup() {
         server.start()
+        toolingApi.requireIsolatedUserHome()
     }
 
     def "downloads distribution with valid user-agent information"() {
         assert distribution.binDistribution.exists() : "bin distribution must exist to run this test, you need to run the :binZip task"
-        def userHomeDir = file("user-home-dir")
 
         given:
         settingsFile << "";
@@ -55,7 +55,6 @@ class ToolingApiRemoteIntegrationTest extends AbstractIntegrationSpec {
         and:
         toolingApi.withConnector { GradleConnector connector ->
             connector.useDistribution(URI.create("http://localhost:${server.port}/custom-dist.zip"))
-            connector.useGradleUserHomeDir(userHomeDir)
         }
 
         when:
@@ -69,7 +68,7 @@ class ToolingApiRemoteIntegrationTest extends AbstractIntegrationSpec {
 
         then:
         buildOutput.toString().contains('hello')
-        userHomeDir.file("wrapper/dists/custom-dist").assertIsDir().listFiles().size() == 1
+        toolingApi.gradleUserHomeDir.file("wrapper/dists/custom-dist").assertIsDir().listFiles().size() == 1
     }
 
     def "can cancel distribution download"() {
@@ -141,14 +140,13 @@ class ToolingApiRemoteIntegrationTest extends AbstractIntegrationSpec {
             def content = file.bytes
             for (int i = 0; i < content.length; i++) {
                 response.outputStream.write(content[i])
-                if (i == 100) {
+                if (i == 30000) { // more than one progress tick in output
                     println('call cancel')
                     tokenSource.cancel()
                     println('cancel request processed')
                     latch.await(10, TimeUnit.SECONDS)
-                } else if (i == 10000) {
-                    println('wait for test finish')
-                    latch.await(10, TimeUnit.SECONDS)
+                    println('cancel request processed')
+                    break;
                 }
             }
             println('server handler done.')

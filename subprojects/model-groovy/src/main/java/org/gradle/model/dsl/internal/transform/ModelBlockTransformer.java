@@ -16,6 +16,7 @@
 
 package org.gradle.model.dsl.internal.transform;
 
+import net.jcip.annotations.NotThreadSafe;
 import org.codehaus.groovy.ast.expr.MethodCallExpression;
 import org.codehaus.groovy.ast.stmt.Statement;
 import org.codehaus.groovy.control.CompilationFailedException;
@@ -29,7 +30,13 @@ import org.gradle.groovy.scripts.internal.ScriptBlock;
 import java.util.Collections;
 import java.util.List;
 
+@NotThreadSafe
 public class ModelBlockTransformer extends AbstractScriptTransformer {
+
+    private static boolean isEnabled() {
+        return Boolean.getBoolean("org.gradle.model.dsl");
+    }
+
 
     @Override
     protected int getPhase() {
@@ -63,6 +70,10 @@ public class ModelBlockTransformer extends AbstractScriptTransformer {
 
     @Override
     public void call(SourceUnit source) throws CompilationFailedException {
+        if (!isEnabled()) {
+            return;
+        }
+
         List<Statement> statements = source.getAST().getStatementBlock().getStatements();
         for (Statement statement : statements) {
             ScriptBlock scriptBlock = AstUtils.detectScriptBlock(statement, SCRIPT_BLOCK_NAMES);

@@ -24,14 +24,12 @@ import org.gradle.api.plugins.ExtensionContainer;
 import org.gradle.internal.Factory;
 import org.gradle.language.base.plugins.ComponentModelBasePlugin;
 import org.gradle.model.InvalidModelRuleDeclarationException;
-import org.gradle.model.internal.core.Inputs;
-import org.gradle.model.internal.core.ModelMutator;
-import org.gradle.model.internal.core.ModelReference;
-import org.gradle.model.internal.core.ModelType;
+import org.gradle.model.internal.core.*;
 import org.gradle.model.internal.core.rule.describe.ModelRuleDescriptor;
 import org.gradle.model.internal.inspect.MethodRuleDefinition;
 import org.gradle.model.internal.inspect.RuleSourceDependencies;
 import org.gradle.model.internal.registry.ModelRegistry;
+import org.gradle.model.internal.type.ModelType;
 import org.gradle.platform.base.InvalidComponentModelException;
 import org.gradle.platform.base.internal.rules.RuleContext;
 
@@ -77,11 +75,11 @@ public class ComponentModelRuleDefinitionHandler<A extends Annotation, T, U exte
     protected ModelType<? extends T> readType(MethodRuleDefinition<?> ruleDefinition) {
         assertIsVoidMethod(ruleDefinition);
         if (ruleDefinition.getReferences().size() != 1) {
-            throw new InvalidComponentModelException(String.format("%s method must have a single parameter of type '%s'.", annotationClass.getSimpleName(), builderInterface.toString()));
+            throw new InvalidComponentModelException(String.format("Method %s must have a single parameter of type '%s'.", getDescription(), builderInterface.toString()));
         }
         ModelType<?> builder = ruleDefinition.getReferences().get(0).getType();
         if (!builderInterface.isAssignableFrom(builder)) {
-            throw new InvalidComponentModelException(String.format("%s method must have a single parameter of type '%s'.", annotationClass.getSimpleName(), builderInterface.toString()));
+            throw new InvalidComponentModelException(String.format("Method %s must have a single parameter of type '%s'.", getDescription(), builderInterface.toString()));
         }
         if (builder.getTypeVariables().size() != 1) {
             throw new InvalidComponentModelException(String.format("Parameter of type '%s' must declare a type parameter.", builderInterface.toString()));
@@ -196,7 +194,7 @@ public class ComponentModelRuleDefinitionHandler<A extends Annotation, T, U exte
             return descriptor;
         }
 
-        public final void mutate(final ExtensionContainer extensionContainer, final Inputs inputs) {
+        public final void mutate(ModelNode modelNode, final ExtensionContainer extensionContainer, final Inputs inputs) {
             RuleContext.inContext(getDescriptor(), new Runnable() {
                 public void run() {
                     RegistrationContext<T, U> context = new RegistrationContext<T, U>(type, implementation, extensionContainer, inputs.get(0, ModelType.of(ProjectIdentifier.class)).getInstance());

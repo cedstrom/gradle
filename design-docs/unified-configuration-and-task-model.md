@@ -81,61 +81,6 @@ A mock up:
 - ~~Model type can contain type params~~
 - ~~Model element declared with illegal name produces reasonable error message~~
 
-### Open issues
-
-- Need some mechanism for the ComponentReport task to determine whether the TestSuites model is available or not. The mechanism should be internal at this stage, eg add a `ModelRegistry.find()` or throw a specific exception thrown by `ModelRegistry.get()`.
-
-> This is there via `ModelRegistry.element()`.
-
-- Expose models as extensions as well:
-    - Have to handle creation rules that take inputs: defer creation until the convention is used, and close the inputs at this point.
-    - Once closed, cannot mutate an object.
-    
-> Not planning on doing this. Model elements will likely be subject to restrictions to facilitate persistence.
-> For backwards compatibility, plugin authors can include a mutation rule for the model element and copy data from the extension to the model.
-> Some stories (not fleshed out) have been added to the backlog to allow extensions as rule inputs.
-    
-- Exact pattern to use to determine which model(s) a plugin exposes
-    - Alternative pattern that declares only the type and name and Gradle takes care of decoration, instantiation and dependency injection
-    
-> The pattern we've implemented is good enough for now.
-> An alternative pattern that allows Gradle to take care of the instantiation could be added later if needed. (perhaps if the method is abstract).
-> There may be persistence implications here. We may have to own construction for hydration to work.
-    
-- Should assert that every model object is decorated, however it happens to be created.
-
-> UNANSWERED - deferring until we get into the persistence side of things as that is likely to have an impact here. 
-> Also, don't really know exactly what we are going to need decoration for at this point.
-
-- Also add an API where a plugin can declare models dynamically?
-
-> Later, if the use case arises.
-
-- DSL reference documents the model.
-
-> Later story.
-
-- Creation rule declares input of unknown type.
-
-> Later story.
-
-- Settings or init script configures model.
-
-> Later story.
-
-- How would a user verify that they got the signature/annotation correct in a unit test?
-
-> Later story.
-
-- Do we support generic types? including wildcard, covariant and contravariant types?
-
-> We support parameterized types where all variables are concrete. 
-> The method rule can't be generic so the only other possible cases are bounded types and the wildcard.
-
-- How much thread safety do we build in right now? e.g. could two plugins be registered concurrently? 
-
-> Out of scope for this story. Model rules are strictly within the project boundary and assuming serial execution at this time.
-
 ## Story: Plugin author unit tests plugin that declares model elements
 
 This story adds a mechanism that plugin authors can use to test that their model declaring plugin is interpreted by Gradle in the way that they expect.
@@ -192,7 +137,7 @@ This story will require making `ModelType` (or some facade) public.
 
 - Shortcut methods for building from a list of sources? (i.e. instead of additive builder)
 
-## Story: Plugin defines tasks using model as input
+## Story: Plugin defines tasks using model as input (DONE)
 
 Introduce some mechanism where a plugin can static declare a rule to define tasks using its model object as input.
 
@@ -237,14 +182,16 @@ A mock up:
 
 ### Open issues
 
-- Project and other things can leak out of `Task` instances when `TaskContainer` is provided to a rule.
-    - Same with `Buildable` things, `BuildableModelElement`, `NativeBinaryTasks`, etc.
-- Need another type to allow task instances to be defined without being created.
-- Don't fire rule when tasks not required (eg building model via tooling API).
-- Report on unknown target for configuration closure.
-- Can take extensions as input too?
+#### Deferred
 
-## Story: Build author configures task created by configuration rule supplied by plugin
+Due to uncertanties about how we will deal with creating non root elements generally, deferring these.
+
+- `CollectionBuilder` is not part of public API.
+- `CollectionBuilder` should have an overload that can accept a rule source class or instance, to allow the configuration rule to have its own inputs that aren't required when the task is declared. Should be consistent with pattern used for dependency management rules.
+- Error message when no collection builder of requested type should provide more help about what is available.
+- Possibly introduce a new type of rule, that adds model elements to a container, rather than 'mutates' the container.
+    
+## Story: Build author configures task created by configuration rule supplied by plugin (DONE)
 
 1. Build author has prior knowledge of task name (i.e. story does not cover any documentation or tooling to allow discovery of task name)
 1. Configuration does not take any external inputs (i.e. all necessary configuration is the application of constants)
@@ -356,6 +303,74 @@ This story adds coverage to ensure that model rules are fired **AFTER** afterEva
 1. ~~Project extension configured during afterEvaluate() registered as model element has configuration made during afterEvaluate()~~
 1. ~~Task created in afterEvaluate() should be visible for a rule taking TaskContainer as an _input_~~
  
+## Story: Instance of rule source type is shared across entire build
+
+When inspecting rule source classes, we should assert _early_ that we can instantiate the type (i.e. during inspection, not rule execution).
+Moreover, we should only instatiate the type once for the whole build and reuse the instance.
+
+## Story: Cyclic dependencies between configuration rules are reported
+
+Cycles between rules are fatal.
+We should detect them and visualise the cycle so the build author can do something about the cycle.
+
+The visualisation should be similar to the visualisation given when a task dependency relationship is cyclic, as far as it makes sense.
+
+Things to consider:
+
+1. When should cycles be detected? (e.g. as rules are added, on demand)
+2. How should the exact source of cycles be reported?
+3. What advice can we realistically give to help break the cycle?
+
+## Story: Internal services are made available to configuration rules
+
+Configuration rules should be able to access selected internal services.
+We need this for our own infrastructure type plugins.
+
+Currently, as a stop gap measure we make the project service registry injectable into rules.
+Instead of doing this, we should allow the project service registry to nominate services it wishes to make available to the service registry.
+It only makes sense to expose immutable services, and we can do this on an as needed basis.
+
+As the services will be internal, they should not be represented as candidates in binding failure messages or other diagnostics.
+To support this, some visibility concept will need to be added to the registry.
+It also doesn't make sense for such services to have an address in the model space.
+That is, they just need to be injectable by type.
+
+## Story: Project build dir is available to rules to mutate and use
+
+Currently, the `project.buildDir` is made available in the model space as a `File` object.
+This is not by-type binding friendly, and generally weak.
+A specific model element should be added for this.
+
+As the build dir is “bridged” we need to consider the value being changed after it has been considered realised in the model space.
+We can't prevent this from happening as it would be a breaking change, but we should emit a deprecation warning when this happens.
+
+## Story: Project extension is bridged to the model space with state management
+
+This story provides infrastructure and a pattern for making project extensions available to the model space in a managed way.
+
+As extensions are generally highly mutable, and aren't managed types, they cannot be bridged as is.
+They effectively need to be “copied” into a managed type. 
+Moreover, some kind of support needs to be provided to warn the user if they modify the extension after it has been copied into the model space.
+
+### Open Questions
+
+- To what extent can we catch modifications to arbitrary extension types in order to issue mutation warnings?
+
+## Story: `Task` instances are instrumented in model space to prevent unmanaged mutation
+
+We can't prevent tasks from appearing in the model space.
+We need to do something to minimise the damage their inherent mutability can cause by preventing mutations without changing their API.
+
+## Story: Remove `TaskContainer` from model space
+
+This type should not be available in model space due.
+
+## Story: Bind by path failures understand model space structure and indicate the failed path “link”
+
+Given an attempt to bind to `tasks.foo` where it does not exist, the error message should indicate that `tasks` does exist, but `foo` does not in some way.
+It should also only suggest alternatives based on the path components that did sucessfully bind.
+That is, it should not suggest `taks.foo` but should suggest `tasks.boo`. 
+
 ## Story: Make the Model DSL public
 
 - New chapter in userguide
@@ -383,34 +398,29 @@ The `@RuleSource` annotation can still be used on a nested class in a `Plugin` i
 
 A new API for querying applied plugins that supports both `Plugin` implementing classes and rule source classes will be introduced:
 
-    interface AppliedPlugin {
+    interface AppliedPlugins {
         @Nullable
-        String getVersion();
-    }
-        
-    interface PluginRegistry {
-        @Nullable
-        AppliedPlugin findPlugin(String id);
+        Class<?> findPlugin(String id);
         boolean contains(String id);
-        void withPlugin(String id, Action<? super AppliedPlugin> action);
+        void withPlugin(String id, Action<? super Class<?>> action);
     }
     
     interface PluginAware {
-        PluginRegistry getPluginRegistry();
+        AppliedPlugins getAppliedPlugins();
     }
 
 ### Test Coverage
 
-- Rule source plugin can be applied to Project via `apply()` using an id or type
-- `Plugin` implementing classes can be applied to Project via `apply(type: ... )`
-- Rule source plugin can be applied to Project via `plugins {}`
-- Rule source plugin can be applied in ProjectBuilder based unit test
-- Rule source plugin cannot be applied to `PluginAware` that is not model rule compatible (e.g. Gradle)
-- Reasonable error message is provided when the `RulePlugin` implementation violates the rules for rule sources
-- `Plugin` impl can include nested rule source class
-- A useful error message is presented to the user if they try to apply a rule source plugin as a regular plugin, i. e. `apply plugin: RuleSourcePlugin` or `apply { plugin RuleSourcePlugin }`
-- Can use `PluginRegistry` and ids to check if both `Plugin` implementing classes and rule source classes are applied to a project
-- A useful error message is presented when using `PluginContainer.withId()` or `PluginContainer.withType()` to check if a rule source plugin is applied   
+- ~~Rule source plugin can be applied to Project via `apply()` using an id or type~~
+- ~~`Plugin` implementing classes can be applied to Project via `apply(type: ... )`~~
+- ~~Rule source plugin can be applied to Project via `plugins {}`~~
+- ~~Rule source plugin can be applied in ProjectBuilder based unit test~~
+- ~~Rule source plugin cannot be applied to `PluginAware` that is not model rule compatible (e.g. Gradle)~~
+- ~~Reasonable error message is provided when the `RulePlugin` implementation violates the rules for rule sources~~
+- ~~`Plugin` impl can include nested rule source class~~
+- ~~A useful error message is presented to the user if they try to apply a rule source plugin as a regular plugin, i. e. `apply plugin: RuleSourcePlugin` or `apply { plugin RuleSourcePlugin }`~~
+- ~~Can use `AppliedPlugins` and ids to check if both `Plugin` implementing classes and rule source classes are applied to a project~~
+- ~~A useful error message is presented when using `PluginContainer.withId()` or `PluginContainer.withType()` to check if a rule source plugin is applied~~   
 
 
 ## Story: Model DSL rule uses a typed model element as input via name
@@ -1044,3 +1054,8 @@ Use it:
     - When calculating task dependencies
     - When generating pom or ivy.xml from consuming project.
     - When building IDE model or generating IDE configuration.
+
+# Diagnostics
+
+- When a task cannot be located, search for methods that accept `CollectionBuilder<Task>` as subject but are not annotated with `@Mutate`.
+- Error message when applying a plugin with a task definition rule during task execution should include more context about the failed rule.    

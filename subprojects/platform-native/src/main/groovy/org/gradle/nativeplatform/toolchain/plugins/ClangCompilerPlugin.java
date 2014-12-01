@@ -26,12 +26,14 @@ import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.service.ServiceRegistry;
 import org.gradle.model.Mutate;
 import org.gradle.model.RuleSource;
-import org.gradle.nativeplatform.plugins.NativeComponentModelPlugin;
+import org.gradle.nativeplatform.plugins.NativeComponentPlugin;
 import org.gradle.nativeplatform.toolchain.Clang;
 import org.gradle.nativeplatform.toolchain.internal.NativeToolChainRegistryInternal;
 import org.gradle.nativeplatform.toolchain.internal.clang.ClangToolChain;
 import org.gradle.nativeplatform.toolchain.internal.gcc.version.CompilerMetaDataProviderFactory;
 import org.gradle.process.internal.ExecActionFactory;
+
+import java.util.Collections;
 
 /**
  * A {@link Plugin} which makes the <a href="http://clang.llvm.org">Clang</a> compiler available for compiling C/C++ code.
@@ -40,7 +42,7 @@ import org.gradle.process.internal.ExecActionFactory;
 public class ClangCompilerPlugin implements Plugin<Project> {
 
     public void apply(Project project) {
-        project.getPlugins().apply(NativeComponentModelPlugin.class);
+        project.apply(Collections.singletonMap("plugin", NativeComponentPlugin.class));
     }
 
     /**

@@ -34,27 +34,22 @@ import java.lang.annotation.Target;
  * import org.gradle.model.*
  * import org.gradle.model.collection.*
  *
- * interface SampleComponent extends ComponentSpec<SampleBinary> {}
+ * interface SampleComponent extends ComponentSpec {}
  * interface SampleBinary extends BinarySpec {}
  * class DefaultSampleBinary extends BaseBinarySpec implements SampleBinary {}
  *
  * apply plugin: MyCustomBinariesPlugin
  *
- * class MyCustomBinariesPlugin implements Plugin<Project> {
- *     void apply(final Project project) {}
+ * {@literal @}RuleSource
+ * class MyCustomBinariesPlugin {
+ *     {@literal @}BinaryType
+ *     void register(BinaryTypeBuilder<SampleBinary> builder) {
+ *         builder.defaultImplementation(DefaultSampleBinary)
+ *     }
  *
- *     {@literal @}RuleSource
- *     static class Rules {
- *
- *          {@literal @}BinaryType
- *          void register(BinaryTypeBuilder<SampleBinary> builder) {
- *             builder.defaultImplementation(DefaultSampleBinary)
- *          }
- *
- *          {@literal @}ComponentBinaries
- *          void createBinariesForSampleLibrary(CollectionBuilder<SampleBinary> binaries, SampleComponent component) {
- *             binaries.create("${component.name}Binary", SampleBinary)
- *          }
+ *     {@literal @}ComponentBinaries
+ *     void createBinariesForSampleLibrary(CollectionBuilder<SampleBinary> binaries, SampleComponent component) {
+ *         binaries.create("${component.name}Binary", SampleBinary)
  *     }
  * }
  * </pre>

@@ -29,10 +29,10 @@ import org.gradle.api.internal.file.FileResolver;
 import org.gradle.api.internal.initialization.ClassLoaderScope;
 import org.gradle.api.internal.initialization.ScriptHandlerFactory;
 import org.gradle.api.internal.plugins.DefaultObjectConfigurationAction;
+import org.gradle.api.internal.plugins.PluginManager;
 import org.gradle.api.internal.project.AbstractPluginAware;
 import org.gradle.api.internal.project.ProjectInternal;
 import org.gradle.api.invocation.Gradle;
-import org.gradle.api.plugins.PluginContainer;
 import org.gradle.configuration.ScriptPluginFactory;
 import org.gradle.execution.TaskGraphExecuter;
 import org.gradle.initialization.ClassLoaderScopeRegistry;
@@ -59,12 +59,12 @@ public class DefaultGradle extends AbstractPluginAware implements GradleInternal
     private final ListenerBroadcast<ProjectEvaluationListener> projectEvaluationListenerBroadcast;
     private ActionBroadcast<Project> rootProjectActions = new ActionBroadcast<Project>();
 
-    private PluginContainer pluginContainer;
     private FileResolver fileResolver;
-
     private final ScriptPluginFactory scriptPluginFactory;
+
     private final ClassLoaderScope classLoaderScope;
     private final ScriptHandlerFactory scriptHandlerFactory;
+    private final PluginManager pluginManager;
 
     public DefaultGradle(Gradle parent, StartParameter startParameter, ServiceRegistryFactory parentRegistry) {
         this.parent = parent;
@@ -74,7 +74,6 @@ public class DefaultGradle extends AbstractPluginAware implements GradleInternal
         taskGraph = services.get(TaskGraphExecuter.class);
         distributionLocator = services.get(GradleDistributionLocator.class);
         classLoaderScope = services.get(ClassLoaderScopeRegistry.class).getCoreAndPluginsScope();
-        pluginContainer = services.get(PluginContainer.class);
         fileResolver = services.get(FileResolver.class);
         scriptPluginFactory = services.get(ScriptPluginFactory.class);
         scriptHandlerFactory = services.get(ScriptHandlerFactory.class);
@@ -87,6 +86,7 @@ public class DefaultGradle extends AbstractPluginAware implements GradleInternal
                 rootProjectActions = null;
             }
         });
+        pluginManager = services.get(PluginManager.class);
     }
 
     @Override
@@ -227,10 +227,6 @@ public class DefaultGradle extends AbstractPluginAware implements GradleInternal
         return services.get(ServiceRegistryFactory.class);
     }
 
-    public PluginContainer getPlugins() {
-        return pluginContainer;
-    }
-
     @Override
     protected DefaultObjectConfigurationAction createObjectConfigurationAction() {
         return new DefaultObjectConfigurationAction(fileResolver, scriptPluginFactory, scriptHandlerFactory, getClassLoaderScope(), this);
@@ -240,4 +236,7 @@ public class DefaultGradle extends AbstractPluginAware implements GradleInternal
         return classLoaderScope;
     }
 
+    public PluginManager getPluginManager() {
+        return pluginManager;
+    }
 }

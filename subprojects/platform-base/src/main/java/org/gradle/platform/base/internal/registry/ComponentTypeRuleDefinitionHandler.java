@@ -25,12 +25,12 @@ import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.reflect.JavaReflectionUtil;
 import org.gradle.language.base.FunctionalSourceSet;
 import org.gradle.language.base.ProjectSourceSet;
-import org.gradle.model.internal.core.ModelType;
+import org.gradle.language.base.internal.DefaultFunctionalSourceSet;
+import org.gradle.model.internal.type.ModelType;
 import org.gradle.platform.base.*;
 import org.gradle.platform.base.component.BaseComponentSpec;
 import org.gradle.platform.base.internal.DefaultComponentSpecIdentifier;
 
-@SuppressWarnings(value={"rawtypes"})
 public class ComponentTypeRuleDefinitionHandler extends ComponentModelRuleDefinitionHandler<ComponentType, ComponentSpec, BaseComponentSpec> {
 
     public ComponentTypeRuleDefinitionHandler(final Instantiator instantiator) {
@@ -60,7 +60,7 @@ public class ComponentTypeRuleDefinitionHandler extends ComponentModelRuleDefini
         private <T extends ComponentSpec, I extends BaseComponentSpec> void doRegister(final ModelType<T> type, final ModelType<I> implementation, final ProjectSourceSet projectSourceSet, ComponentSpecContainer componentSpecs, final ProjectIdentifier projectIdentifier) {
             componentSpecs.registerFactory(type.getConcreteClass(), new NamedDomainObjectFactory<T>() {
                 public T create(String name) {
-                    FunctionalSourceSet componentSourceSet = projectSourceSet.maybeCreate(name);
+                    FunctionalSourceSet componentSourceSet = instantiator.newInstance(DefaultFunctionalSourceSet.class, name, instantiator, projectSourceSet);
                     ComponentSpecIdentifier id = new DefaultComponentSpecIdentifier(projectIdentifier.getPath(), name);
 
                     // safe because we implicitly know that U extends V, but can't express this in the type system

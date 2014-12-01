@@ -20,10 +20,7 @@ import org.gradle.api.tasks.TaskDependencyMatchers
 import org.gradle.language.assembler.AssemblerSourceSet
 import org.gradle.language.assembler.tasks.Assemble
 import org.gradle.language.base.FunctionalSourceSet
-import org.gradle.nativeplatform.NativeBinary
-import org.gradle.nativeplatform.NativeExecutableBinarySpec
-import org.gradle.nativeplatform.SharedLibraryBinarySpec
-import org.gradle.nativeplatform.StaticLibraryBinarySpec
+import org.gradle.nativeplatform.*
 import org.gradle.util.GFileUtils
 import org.gradle.util.TestUtil
 import spock.lang.Specification
@@ -35,55 +32,36 @@ class AssemblerPluginTest extends Specification {
         when:
         dsl {
             apply plugin: AssemblerPlugin
-            executables {
-                exe {}
-            }
-            libraries {
-                lib {}
+            model {
+                components {
+                    exe(NativeExecutableSpec)
+                }
             }
         }
 
         then:
-        def sourceSets = project.sources
-        sourceSets.size() == 2
-        sourceSets*.name == ["exe", "lib"]
+        def exe = project.componentSpecs.exe
+        exe.sources instanceof FunctionalSourceSet
+        exe.sources.asm instanceof AssemblerSourceSet
+        exe.sources.asm.source.srcDirs == [project.file("src/exe/asm")] as Set
 
         and:
-        sourceSets.exe.asm instanceof AssemblerSourceSet
-        sourceSets.exe.asm.source.srcDirs == [project.file("src/exe/asm")] as Set
-        project.nativeRuntime.executables.exe.source == [sourceSets.exe.asm] as Set
-
-        and:
-        sourceSets.lib instanceof FunctionalSourceSet
-        sourceSets.lib.asm instanceof AssemblerSourceSet
-        sourceSets.lib.asm.source.srcDirs == [project.file("src/lib/asm")] as Set
-        project.nativeRuntime.libraries.lib.source == [sourceSets.lib.asm] as Set
+        project.sources as Set == exe.sources as Set
     }
 
     def "can configure source set locations"() {
         given:
         dsl {
             apply plugin: AssemblerPlugin
-            libraries {
-                lib {}
-            }
-
-            executables {
-                exe {}
-            }
-
-            sources {
-                exe {
-                    asm {
-                        source {
-                            srcDirs "d1", "d2"
-                        }
-                    }
-                }
-                lib {
-                    asm {
-                        source {
-                            srcDirs "d3"
+            model {
+                components {
+                    exe(NativeExecutableSpec) {
+                        sources {
+                            asm {
+                                source {
+                                    srcDirs "d1", "d2"
+                                }
+                            }
                         }
                     }
                 }
@@ -91,8 +69,7 @@ class AssemblerPluginTest extends Specification {
         }
 
         expect:
-        project.sources.exe.asm.source.srcDirs*.name == ["d1", "d2"]
-        project.sources.lib.asm.source.srcDirs*.name == ["d3"]
+        project.componentSpecs.exe.sources.asm.source.srcDirs*.name == ["d1", "d2"]
     }
 
     def "creates assemble tasks for each non-empty executable source set "() {
@@ -101,16 +78,17 @@ class AssemblerPluginTest extends Specification {
         touch("src/test/anotherOne/dummy.s")
         dsl {
             apply plugin: AssemblerPlugin
-            sources {
-                test {
-                    anotherOne(AssemblerSourceSet) {}
-                    emptyOne(AssemblerSourceSet) {}
-                }
-            }
-            executables {
-                test {
-                    binaries.all { NativeBinary binary ->
-                        binary.assembler.args "ARG1", "ARG2"
+
+            model {
+                components {
+                    test(NativeExecutableSpec) {
+                        sources {
+                            anotherOne(AssemblerSourceSet) {}
+                            emptyOne(AssemblerSourceSet) {}
+                        }
+                        binaries.all { NativeBinary binary ->
+                            binary.assembler.args "ARG1", "ARG2"
+                        }
                     }
                 }
             }
@@ -138,22 +116,22 @@ class AssemblerPluginTest extends Specification {
         touch("src/test/anotherOne/dummy.s")
         dsl {
             apply plugin: AssemblerPlugin
-            sources {
-                test {
-                    anotherOne(AssemblerSourceSet) {}
-                    emptyOne(AssemblerSourceSet) {}
-                }
-            }
-            libraries {
-                test {
-                    binaries.all {
-                        assembler.args "ARG1", "ARG2"
-                    }
-                    binaries.withType(SharedLibraryBinarySpec) {
-                        assembler.args "SHARED1", "SHARED2"
-                    }
-                    binaries.withType(StaticLibraryBinarySpec) {
-                        assembler.args "STATIC1", "STATIC2"
+            model {
+                components {
+                    test(NativeLibrarySpec) {
+                        sources {
+                            anotherOne(AssemblerSourceSet) {}
+                            emptyOne(AssemblerSourceSet) {}
+                        }
+                        binaries.all {
+                            assembler.args "ARG1", "ARG2"
+                        }
+                        binaries.withType(SharedLibraryBinarySpec) {
+                            assembler.args "SHARED1", "SHARED2"
+                        }
+                        binaries.withType(StaticLibraryBinarySpec) {
+                            assembler.args "STATIC1", "STATIC2"
+                        }
                     }
                 }
             }

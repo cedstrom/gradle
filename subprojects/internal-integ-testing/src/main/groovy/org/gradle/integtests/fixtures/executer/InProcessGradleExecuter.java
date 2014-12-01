@@ -30,11 +30,7 @@ import org.gradle.api.tasks.TaskState;
 import org.gradle.cli.CommandLineParser;
 import org.gradle.cli.ParsedCommandLine;
 import org.gradle.execution.MultipleBuildFailures;
-import org.gradle.initialization.BuildLayoutParameters;
-import org.gradle.initialization.DefaultBuildCancellationToken;
-import org.gradle.initialization.DefaultCommandLineConverter;
-import org.gradle.initialization.DefaultGradleLauncherFactory;
-import org.gradle.initialization.GradleLauncher;
+import org.gradle.initialization.*;
 import org.gradle.internal.Factory;
 import org.gradle.internal.exceptions.LocationAwareException;
 import org.gradle.internal.jvm.Jvm;
@@ -46,7 +42,6 @@ import org.gradle.internal.service.scopes.GlobalScopeServices;
 import org.gradle.launcher.Main;
 import org.gradle.launcher.cli.converter.LayoutToPropertiesConverter;
 import org.gradle.launcher.cli.converter.PropertiesToStartParameterConverter;
-import org.gradle.launcher.daemon.registry.DaemonRegistry;
 import org.gradle.logging.LoggingServiceRegistry;
 import org.gradle.logging.ShowStacktrace;
 import org.gradle.process.internal.JavaExecHandleBuilder;
@@ -59,15 +54,7 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.StringWriter;
 import java.nio.charset.Charset;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.regex.Pattern;
@@ -79,7 +66,7 @@ import static org.junit.Assert.*;
 class InProcessGradleExecuter extends AbstractGradleExecuter {
     private static final ServiceRegistry GLOBAL_SERVICES = ServiceRegistryBuilder.builder()
             .displayName("Global services")
-            .parent(LoggingServiceRegistry.newProcessLogging())
+            .parent(LoggingServiceRegistry.newCommandLineProcessLogging())
             .parent(NativeServices.getInstance())
             .provider(new GlobalScopeServices(true))
             .build();
@@ -139,6 +126,7 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
                 builder.classpath(classpath);
                 builder.setMain(Main.class.getName());
                 builder.args(getAllArgs());
+                builder.setStandardInput(getStdin());
                 return builder;
             }
         }).start();
@@ -205,10 +193,6 @@ class InProcessGradleExecuter extends AbstractGradleExecuter {
             factory.removeListener(listener);
             System.setIn(originalStdIn);
         }
-    }
-
-    public DaemonRegistry getDaemonRegistry() {
-        throw new UnsupportedOperationException();
     }
 
     public void assertCanExecute() {

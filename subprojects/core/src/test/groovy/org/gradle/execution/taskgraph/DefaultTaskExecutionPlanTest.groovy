@@ -359,6 +359,25 @@ public class DefaultTaskExecutionPlanTest extends Specification {
         executes(finalized, f2, d, f1)
     }
 
+    @Issue("GRADLE-2957")
+    def "task with a dependency and a finalizer both having a common finalizer"() {
+        // Finalizer task
+        Task finalTask = task('finalTask')
+
+        // Task with this finalizer
+        Task dependency = task('dependency', finalizedBy: [finalTask])
+        Task finalizer = task('finalizer', finalizedBy: [finalTask])
+
+        // Task to call, with the same finalizer than one of its dependencies
+        Task requestedTask = task('requestedTask', dependsOn: [dependency], finalizedBy: [finalizer])
+
+        when:
+        addToGraphAndPopulate([requestedTask])
+
+        then:
+        executes(dependency, requestedTask, finalizer, finalTask)
+    }
+
     @Issue("GRADLE-2983")
     def "multiple finalizer tasks with relationships via other tasks scheduled from multiple tasks"() {
         //finalizers with a relationship via a dependency
@@ -499,6 +518,23 @@ public class DefaultTaskExecutionPlanTest extends Specification {
         executedTasks == [a, d, e, b, c, f, g, h]
     }
 
+    @Issue("GRADLE-3166")
+    def "multiple should run after declarations are removed if causing circular reference"() {
+        Task a = createTask("a")
+        Task b = createTask("b")
+        Task c = createTask("c")
+
+        relationships(a, dependsOn: [c])
+        relationships(b, dependsOn: [a, c])
+        relationships(c, shouldRunAfter: [b, a])
+
+        when:
+        addToGraphAndPopulate([b])
+
+        then:
+        executedTasks == [c, a, b]
+    }
+
     def "should run after ordering is ignored if it is at the end of a circular reference"() {
         Task a = createTask("a")
         Task b = task("b", dependsOn: [a])
@@ -558,7 +594,7 @@ public class DefaultTaskExecutionPlanTest extends Specification {
     }
 
     def "stops returning tasks when build is cancelled"() {
-        3 * cancellationHandler.cancellationRequested >>> [false, true, true]
+        2 * cancellationHandler.cancellationRequested >>> [false, true]
         Task a = task("a");
         Task b = task("b");
 
@@ -797,17 +833,17 @@ public class DefaultTaskExecutionPlanTest extends Specification {
         executes(c)
     }
 
-    def "one parallel task per project is allowed"() {
+    def "one non parallelizable parallel task per project is allowed"() {
         given:
-        //2 projects, 2 tasks each
+        //2 projects, 2 non parallelizable tasks each
         def projectA = createChildProject(root, "a")
         def projectB = createChildProject(root, "b")
 
-        def fooA = projectA.task("foo")
-        def barA = projectA.task("bar")
+        def fooA = projectA.task("foo").doLast {}
+        def barA = projectA.task("bar").doLast {}
 
-        def fooB = projectB.task("foo")
-        def barB = projectB.task("bar")
+        def fooB = projectB.task("foo").doLast {}
+        def barB = projectB.task("bar").doLast {}
 
         addToGraphAndPopulate([fooA, barA, fooB, barB])
 

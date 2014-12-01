@@ -19,25 +19,18 @@ package org.gradle.nativeplatform.internal;
 import org.gradle.api.file.FileCollection;
 import org.gradle.language.base.LanguageSourceSet;
 import org.gradle.language.nativeplatform.NativeResourceSet;
-import org.gradle.nativeplatform.*;
-import org.gradle.nativeplatform.internal.resolve.NativeDependencyResolver;
-import org.gradle.nativeplatform.platform.NativePlatform;
-import org.gradle.nativeplatform.toolchain.internal.PlatformToolProvider;
-import org.gradle.nativeplatform.toolchain.internal.NativeToolChainInternal;
-import org.gradle.platform.base.internal.BinaryNamingScheme;
+import org.gradle.nativeplatform.SharedLibraryBinary;
+import org.gradle.nativeplatform.SharedLibraryBinarySpec;
+import org.gradle.nativeplatform.tasks.AbstractLinkTask;
 
 import java.io.File;
 import java.util.Collections;
 import java.util.Set;
 
 public class DefaultSharedLibraryBinarySpec extends AbstractNativeLibraryBinarySpec implements SharedLibraryBinary, SharedLibraryBinarySpecInternal {
+    private final SharedLibraryBinarySpec.NativeBinaryTasks tasks = new DefaultNativeBinaryTasks(this);
     private File sharedLibraryFile;
     private File sharedLibraryLinkFile;
-
-    public DefaultSharedLibraryBinarySpec(NativeLibrarySpec library, Flavor flavor, NativeToolChainInternal toolChain, PlatformToolProvider toolProvider, NativePlatform platform, BuildType buildType,
-                                          BinaryNamingScheme namingScheme, NativeDependencyResolver resolver) {
-        super(library, flavor, toolChain, toolProvider, platform, buildType, namingScheme, resolver);
-    }
 
     public File getSharedLibraryFile() {
         return sharedLibraryFile;
@@ -65,6 +58,20 @@ public class DefaultSharedLibraryBinarySpec extends AbstractNativeLibraryBinaryS
 
     public FileCollection getRuntimeFiles() {
         return new SharedLibraryRuntimeOutputs();
+    }
+
+    public SharedLibraryBinarySpec.NativeBinaryTasks getTasks() {
+        return tasks;
+    }
+
+    public static class DefaultNativeBinaryTasks extends AbstractNativeLibraryBinarySpec.DefaultNativeBinaryTasks implements SharedLibraryBinarySpec.NativeBinaryTasks {
+        public DefaultNativeBinaryTasks(NativeBinarySpecInternal binary) {
+            super(binary);
+        }
+
+        public AbstractLinkTask getLink() {
+            return findSingleTaskWithType(AbstractLinkTask.class);
+        }
     }
 
     private class SharedLibraryLinkOutputs extends LibraryOutputs {
